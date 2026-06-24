@@ -1,7 +1,10 @@
 import { create } from 'zustand'
-import type { Career } from '@/engine/types'
+import type { Career, Player, PlayStyle } from '@/engine/types'
 import { createCareer, autoFillLineup, type NewCareerInput } from '@/engine/career'
 import { advanceWeek as advanceWeekEngine } from '@/engine/calendar'
+import { simulateMatch, type MatchResult } from '@/engine/match'
+import { buildManagerTeam, buildOpponentTeam, matchSeed } from '@/engine/matchSetup'
+import { NATIONS_BY_ID } from '@/data/nations'
 import { saveCareer, loadCareer, deleteSave } from './persist'
 
 // Top-level navigation. Plain state machine, no router — simpler and more
@@ -16,6 +19,7 @@ export type Route =
   | 'dual-nationals'
   | 'settings'
   | 'save'
+  | 'match'
 
 interface GameState {
   route: Route
@@ -33,6 +37,8 @@ interface GameState {
   swapLineupSlots: (slotA: string, slotB: string) => void
   saveNow: () => Promise<void>
   abandonCareer: () => Promise<void>
+
+  playExhibition: (opponentId: string, style: PlayStyle, isHome: boolean) => MatchResult
 }
 
 // Debounced autosave so rapid taps don't thrash IndexedDB.
@@ -117,4 +123,56 @@ export const useGame = create<GameState>((set, get) => ({
     await deleteSave()
     set({ career: null, route: 'title' })
   },
+
+  playExhibition: (opponentId, style, isHome) => {
+    const { career } = get()
+    if (!career) throw new Error('no career')
+    const opponent = NATIONS_BY_ID[opponentId]
+
+    const managerTeam = buildManagerTeam(career, style, isHome)
+    const opponentTeam = buildOpponentTeam(opponent, career.seed, !isHome)
+    const home = isHome ? managerTeam : opponentTeam
+    const away = isHome ? opponentTeam : managerTeam
+    const seed = matchSeed(career.seed, career.year, career.week, opponentId)
+    const result = simulateMatch(home, away, seed)
+
+    // Apply a light form nudge to the manager's players who featured, pulling
+    // form toward their match rating — so results carry into the next match.
+    const ratings = isHome ? result.ratingsHome : result.ratingsAway
+    const ratingById = new Map(ratings.map((r) => [r.playerId, r.rating]))
+    const players: Player[] = career.players.map((p) => {
+      const r = ratingById.get(p.id)
+      if (r === undefined) return p
+      const delta = (r - 6.5) * 3
+      return { ...p, form: Math.max(20, Math.min(99, Math.round(p.form + delta))) }
+    })
+
+    const headline = matchHeadline(result, isHome, career.year, career.week)
+    const next: Career = { ...career, players, news: [headline, ...career.news].slice(0, 60) }
+    set({ career: next })
+    scheduleSave(next)
+    return result
+  },
 }))
+
+function matchHeadline(
+  result: MatchResult,
+  managerIsHome: boolean,
+  year: number,
+  week: number,
+): Career['news'][number] {
+  const mine = managerIsHome ? result.homeGoals : result.awayGoals
+  const theirs = managerIsHome ? result.awayGoals : result.homeGoals
+  const verb = mine > theirs ? 'beat' : mine < theirs ? 'lost to' : 'drew with'
+  const myName = managerIsHome ? result.homeName : result.awayName
+  const oppName = managerIsHome ? result.awayName : result.homeName
+  const motm = result.motm ? ` ${result.motm.name} took the plaudits.` : ''
+  return {
+    id: `match-${myName}-${oppName}-${result.homeGoals}${result.awayGoals}-${Math.round(result.xgHome * 10)}-${year}${week}`,
+    week,
+    year,
+    type: 'FRIENDLY',
+    magnitude: 0.6,
+    text: `${myName} ${verb} ${oppName} ${result.homeGoals}–${result.awayGoals} in a friendly.${motm}`,
+  }
+}

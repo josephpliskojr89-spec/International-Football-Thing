@@ -6,6 +6,7 @@ import { MenuSheet } from '../components/MenuSheet'
 export function ScheduleScreen() {
   const career = useGame((s) => s.career)!
   const advanceWeek = useGame((s) => s.advanceWeek)
+  const go = useGame((s) => s.go)
   const [menuOpen, setMenuOpen] = useState(false)
 
   const nation = NATIONS_BY_ID[career.managerNationId]
@@ -31,6 +32,20 @@ export function ScheduleScreen() {
 
       <div className="screen__body">
         <WeekCard week={career.week} year={career.year} />
+
+        <button className="card playmatch" onClick={() => go('match')} style={{ textAlign: 'left' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 26 }}>⚽</span>
+            <div>
+              <div style={{ fontWeight: 800 }}>Play a Friendly</div>
+              <div className="muted" style={{ fontSize: 13 }}>
+                Pick an opponent and test your side
+              </div>
+            </div>
+            <div className="spacer" />
+            <span className="faint">›</span>
+          </div>
+        </button>
 
         <div className="sectionhdr">News Feed</div>
         {career.news.length === 0 && (

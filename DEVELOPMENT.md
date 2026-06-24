@@ -35,9 +35,9 @@ A player's displayed rating is a *scouted read* whose sharpness depends on
 (future) development engine. `displayOverall()` in `ui/display.ts` is where the
 fuzziness surfaces. Never render hidden values (potential, leans, injuryRisk) raw.
 
-## Status — Milestone 0 (the shell)
+## Status
 
-Built and playable end-to-end:
+### Milestone 0 — the shell (done)
 - Installable PWA + service worker + offline; IndexedDB save/load/continue.
 - Title → New Game (nation → manager name → style) → week-by-week schedule hub.
 - News feed (placeholder bank), week advance with calendar roll + freshness decay.
@@ -46,11 +46,28 @@ Built and playable end-to-end:
 - Nation-authentic name generation wired to the cleaned name-pools data.
 - Lightweight squad generator so every tab has real content.
 
+### Milestone 1 — match engine + a playable match (done)
+- Full six-step engine in `engine/match.ts`: zone strength → form/style/home
+  modifiers → midfield matchup edge → xG → independent Poisson → narrative
+  back-fill (scorers, injuries, ratings, MOTM). Pure, seedable, no side effects.
+- Tier-3 lite resolver (`engine/matchLite.ts`) for non-playable nations.
+- `engine/matchSetup.ts` builds team views + AI opponent (deterministic squad
+  regen, identity→formation mapping).
+- Playable "Friendly" flow: Schedule → pick opponent/style/venue → Kick Off →
+  animated scoreline, possession/xG bars, scorers, MOTM, player ratings.
+  Result nudges player form and emits a feed headline.
+- All tuning constants in `data/constants.ts`. Balanced matches ~1.3 xG/side.
+
+  NOTE: final match balance waits on real squads — the placeholder squad
+  generator compresses the elite-vs-minnow gap, so favorite-win% will sharpen
+  once the youth/development model lands.
+
 ### Not yet built (next milestones)
-1. Match engine (6-step, Tier 1/2/3 resolution) + Match screen.
-2. Real calendar fixtures, qualifying formats, tournaments, rankings/seeding.
-3. Youth intake, development engine, golden generations.
-4. Scouting coverage (coach league assignments + targeted looks).
-5. Eligibility/persuasion (leans, courting, rival-AI clock) + actionable feed.
-6. Template-driven News engine (events → priority → feed mix).
-7. Manager progression (move nations, get sacked, skills) — deferred per design.
+1. Real calendar fixtures, qualifying formats, tournaments, rankings/seeding
+   (wires Tier 1/2/3 into actual scheduled windows).
+2. Youth intake, development engine, golden generations (replaces placeholder
+   squad ratings with the real talent model).
+3. Scouting coverage (coach league assignments + targeted looks).
+4. Eligibility/persuasion (leans, courting, rival-AI clock) + actionable feed.
+5. Template-driven News engine (events → priority → feed mix).
+6. Manager progression (move nations, get sacked, skills) — deferred per design.

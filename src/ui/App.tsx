@@ -8,6 +8,7 @@ import { PoolScreen } from './screens/PoolScreen'
 import { DualNationalsScreen } from './screens/DualNationalsScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { SaveScreen } from './screens/SaveScreen'
+import { MatchScreen } from './screens/MatchScreen'
 
 export function App() {
   const route = useGame((s) => s.route)
@@ -42,6 +43,8 @@ export function App() {
       return <SettingsScreen />
     case 'save':
       return <SaveScreen />
+    case 'match':
+      return <MatchScreen />
     default:
       return <TitleScreen />
   }
