@@ -31,6 +31,7 @@ export function createCareer(input: NewCareerInput): Career {
     style: input.style,
     year: 1,
     week: 1,
+    exhibitionCount: 0,
     players,
     coaches,
     lineup,

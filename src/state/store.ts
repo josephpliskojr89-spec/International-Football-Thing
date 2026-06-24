@@ -4,6 +4,7 @@ import { createCareer, autoFillLineup, type NewCareerInput } from '@/engine/care
 import { advanceWeek as advanceWeekEngine } from '@/engine/calendar'
 import { simulateMatch, type MatchResult } from '@/engine/match'
 import { buildManagerTeam, buildOpponentTeam, matchSeed } from '@/engine/matchSetup'
+import { deriveSeed } from '@/engine/rng'
 import { NATIONS_BY_ID } from '@/data/nations'
 import { saveCareer, loadCareer, deleteSave } from './persist'
 
@@ -133,7 +134,11 @@ export const useGame = create<GameState>((set, get) => ({
     const opponentTeam = buildOpponentTeam(opponent, career.seed, !isHome)
     const home = isHome ? managerTeam : opponentTeam
     const away = isHome ? opponentTeam : managerTeam
-    const seed = matchSeed(career.seed, career.year, career.week, opponentId)
+    // Mix in a per-friendly counter so replaying the same fixture this week
+    // rolls a fresh result instead of reproducing the previous one. Scheduled
+    // competitive fixtures (later) will stay seed-stable for save/reload.
+    const count = career.exhibitionCount ?? 0 // tolerate pre-Milestone-1 saves
+    const seed = deriveSeed(matchSeed(career.seed, career.year, career.week, opponentId), count)
     const result = simulateMatch(home, away, seed)
 
     // Apply a light form nudge to the manager's players who featured, pulling
@@ -147,8 +152,13 @@ export const useGame = create<GameState>((set, get) => ({
       return { ...p, form: Math.max(20, Math.min(99, Math.round(p.form + delta))) }
     })
 
-    const headline = matchHeadline(result, isHome, career.year, career.week)
-    const next: Career = { ...career, players, news: [headline, ...career.news].slice(0, 60) }
+    const headline = matchHeadline(result, isHome, career.year, career.week, count)
+    const next: Career = {
+      ...career,
+      players,
+      exhibitionCount: count + 1,
+      news: [headline, ...career.news].slice(0, 60),
+    }
     set({ career: next })
     scheduleSave(next)
     return result
@@ -160,6 +170,7 @@ function matchHeadline(
   managerIsHome: boolean,
   year: number,
   week: number,
+  nonce: number,
 ): Career['news'][number] {
   const mine = managerIsHome ? result.homeGoals : result.awayGoals
   const theirs = managerIsHome ? result.awayGoals : result.homeGoals
@@ -168,7 +179,7 @@ function matchHeadline(
   const oppName = managerIsHome ? result.awayName : result.homeName
   const motm = result.motm ? ` ${result.motm.name} took the plaudits.` : ''
   return {
-    id: `match-${myName}-${oppName}-${result.homeGoals}${result.awayGoals}-${Math.round(result.xgHome * 10)}-${year}${week}`,
+    id: `match-${nonce}-${myName}-${oppName}-${result.homeGoals}${result.awayGoals}-${year}${week}`,
     week,
     year,
     type: 'FRIENDLY',

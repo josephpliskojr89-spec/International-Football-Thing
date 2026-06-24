@@ -94,6 +94,7 @@ export interface Career {
 
   year: number // cycle year 1..4
   week: number // 1..52
+  exhibitionCount: number // # of one-off friendlies played; varies their seed
 
   players: Player[] // the manager nation's pool (shell: generated squad+fringe)
   coaches: Coach[]
