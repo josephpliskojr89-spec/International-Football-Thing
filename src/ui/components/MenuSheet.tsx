@@ -12,6 +12,7 @@ const ENTRIES: MenuEntry[] = [
   { route: 'squad', icon: '⚽', label: 'Squad', sub: 'Formation & starting XI' },
   { route: 'pool', icon: '👥', label: 'Player Pool', sub: 'Everyone available to you' },
   { route: 'dual-nationals', icon: '🌍', label: 'Dual Nationals', sub: 'Eligible, not yet committed' },
+  { route: 'scouting', icon: '🧭', label: 'Scouting', sub: 'Assign coaches to leagues' },
   { route: 'settings', icon: '⚙️', label: 'Settings', sub: 'Volume & difficulty' },
   { route: 'save', icon: '💾', label: 'Save Game', sub: 'Your career is auto-saved' },
 ]

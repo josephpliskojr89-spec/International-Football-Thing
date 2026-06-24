@@ -62,12 +62,29 @@ fuzziness surfaces. Never render hidden values (potential, leans, injuryRisk) ra
   generator compresses the elite-vs-minnow gap, so favorite-win% will sharpen
   once the youth/development model lands.
 
+### Milestone 2 — the living talent model (done)
+- Real two-stage generation: hidden potential drawn from a right-skewed lottery
+  (shifted by Youth Rating, floored by Football Culture); senior squads anchored
+  near nation strength with potential derived as age-appropriate headroom.
+- Hidden/known split in the player model: real ratings/potential are hidden and
+  moved by the development engine; the UI renders only the last scouted read
+  (`knownOverall`/`knownPotential`), blurred by freshness.
+- Development engine (`engine/development.ts`): young players grow toward
+  potential gated by playing time (benched kids stall); veterans decline past
+  peak (GK/DF slower). Floats accumulate so weekly change isn't rounded away.
+- Annual silent youth intake (`engine/youth.ts`): size scales with pool depth,
+  rare golden-generation flag, small dual-national fraction. No notification.
+- Scouting coverage (`engine/scouting.ts`) + Scouting screen: assign 3 coaches
+  to leagues; covered pool stays sharp, uncovered drifts fuzzy.
+- News feed hypes emerging kids from their real hidden ability (never reveals
+  the number) — discovery happens through feed + coverage, nothing hand-placed.
+- Fixes the earlier match-balance caveat: squads now have proper spread.
+
 ### Not yet built (next milestones)
-1. Real calendar fixtures, qualifying formats, tournaments, rankings/seeding
+1. Discovery polish: actionable "send a scout" from a hype headline (targeted
+   look wired to the feed), confirmation/bust outcomes.
+2. Real calendar fixtures, qualifying formats, tournaments, rankings/seeding
    (wires Tier 1/2/3 into actual scheduled windows).
-2. Youth intake, development engine, golden generations (replaces placeholder
-   squad ratings with the real talent model).
-3. Scouting coverage (coach league assignments + targeted looks).
-4. Eligibility/persuasion (leans, courting, rival-AI clock) + actionable feed.
-5. Template-driven News engine (events → priority → feed mix).
-6. Manager progression (move nations, get sacked, skills) — deferred per design.
+3. Eligibility/persuasion (leans, courting, rival-AI clock) + actionable feed.
+4. Template-driven News engine (events → priority → feed mix).
+5. Manager progression (move nations, get sacked, skills) — deferred per design.

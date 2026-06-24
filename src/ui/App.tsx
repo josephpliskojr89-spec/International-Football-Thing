@@ -9,6 +9,7 @@ import { DualNationalsScreen } from './screens/DualNationalsScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { SaveScreen } from './screens/SaveScreen'
 import { MatchScreen } from './screens/MatchScreen'
+import { ScoutingScreen } from './screens/ScoutingScreen'
 
 export function App() {
   const route = useGame((s) => s.route)
@@ -45,6 +46,8 @@ export function App() {
       return <SaveScreen />
     case 'match':
       return <MatchScreen />
+    case 'scouting':
+      return <ScoutingScreen />
     default:
       return <TitleScreen />
   }

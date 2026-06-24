@@ -30,6 +30,7 @@ export function createCareer(input: NewCareerInput): Career {
     managerNationId: input.nationId,
     style: input.style,
     year: 1,
+    season: 1,
     week: 1,
     exhibitionCount: 0,
     players,

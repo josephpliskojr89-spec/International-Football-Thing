@@ -29,24 +29,33 @@ export interface Player {
   age: number
   club: string
   clubLeague: string
-  ratings: Ratings
-  form: number // 0..100, short-term
-  overall: number // convenience: weighted snapshot of ratings for the position
 
-  // ---- hidden (never surfaced raw) ----
-  potential: number
+  // ---- REAL ability (HIDDEN — moved invisibly by the development engine) ----
+  // These are the truth. The UI must never render them directly; it renders the
+  // scouted read below. They only become known through coverage.
+  ratings: Ratings
+  overall: number // derived from ratings for the position
+  potential: number // hidden ceiling
+  form: number // 0..100, short-term
+
+  // ---- other hidden traits ----
   injuryRisk: number
   professionalism: number
   consistency: number
+  playingTime: number // 0..1 club playing-time factor (dominant growth lever)
+
+  // ---- THE SCOUTED READ (what the UI shows) ----
+  // knownOverall/knownPotential are the player's *last observed* values. They
+  // sync to the real ones on coverage and otherwise stay frozen (going stale).
+  knownOverall: number
+  knownPotential: number // 0 = not yet read
+  freshness: number // 100 = sharp; decays while uncovered
 
   // ---- eligibility ----
   eligibleNations: string[]
   leans: Record<string, number> // hidden lean per eligible nation
   eligibilityState: EligibilityState
   tiedNation: string | null
-
-  // ---- scouting freshness ----
-  freshness: number // 100 = sharp, decays when uncovered
 }
 
 export interface Nation {
@@ -92,7 +101,8 @@ export interface Career {
   managerNationId: string
   style: ManagerStyle
 
-  year: number // cycle year 1..4
+  year: number // cycle year 1..4 (World Cup pulse)
+  season: number // absolute season counter (drives aging + youth intake)
   week: number // 1..52
   exhibitionCount: number // # of one-off friendlies played; varies their seed
 

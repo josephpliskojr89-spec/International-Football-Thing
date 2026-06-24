@@ -26,13 +26,22 @@ export function freshnessColor(freshness: number): string {
   return 'var(--bad)'
 }
 
-// Displayed rating: sharp reads show the exact number; fuzzy reads show a band
-// (e.g. "~70") because you genuinely don't know it precisely anymore.
+// Displayed rating uses the SCOUTED read (knownOverall), never the hidden real
+// value. Sharp reads show the exact number; fuzzy reads blur it, because you
+// genuinely don't know it precisely anymore.
 export function displayOverall(p: Player): string {
-  if (p.freshness >= 80) return String(p.overall)
-  if (p.freshness >= 50) return `${p.overall - 1}–${p.overall + 1}`
-  if (p.freshness >= 25) return `~${Math.round(p.overall / 5) * 5}`
+  const v = p.knownOverall
+  if (p.freshness >= 80) return String(v)
+  if (p.freshness >= 50) return `${v - 1}–${v + 1}`
+  if (p.freshness >= 25) return `~${Math.round(v / 5) * 5}`
   return '??'
+}
+
+// Potential read: unknown until scouted, then shown as a star band whose
+// sharpness still depends on freshness.
+export function displayPotential(p: Player): string {
+  if (p.knownPotential === 0 || p.freshness < 25) return '?'
+  return starString(p.knownPotential)
 }
 
 export function positionColor(position: Player['position']): string {

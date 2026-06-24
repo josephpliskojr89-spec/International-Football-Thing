@@ -1,7 +1,8 @@
 import type { Player } from '@/engine/types'
-import { displayOverall, formColor, positionColor, freshnessColor } from '../display'
+import { displayOverall, displayPotential, formColor, positionColor, freshnessColor } from '../display'
 
 export function PlayerRow({ p, onClick }: { p: Player; onClick?: () => void }) {
+  const pot = displayPotential(p)
   return (
     <button className="prow" onClick={onClick}>
       <span className="prow__pos" style={{ background: positionColor(p.position) }}>
@@ -11,6 +12,7 @@ export function PlayerRow({ p, onClick }: { p: Player; onClick?: () => void }) {
         <span className="prow__name">{p.name}</span>
         <span className="prow__sub">
           {p.age} · {p.club}
+          {pot !== '?' && <span style={{ color: 'var(--gold)' }}> · {pot}</span>}
         </span>
       </span>
       <span className="prow__meta">

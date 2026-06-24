@@ -14,7 +14,7 @@ export function DualNationalsScreen() {
     () =>
       career.players
         .filter((p) => p.eligibleNations.length > 1 && p.eligibilityState !== 'CAP_TIED')
-        .sort((a, b) => b.potential - a.potential),
+        .sort((a, b) => b.knownOverall - a.knownOverall),
     [career.players],
   )
 

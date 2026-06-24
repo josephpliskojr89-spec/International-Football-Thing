@@ -21,6 +21,7 @@ export type Route =
   | 'settings'
   | 'save'
   | 'match'
+  | 'scouting'
 
 interface GameState {
   route: Route
@@ -40,6 +41,7 @@ interface GameState {
   abandonCareer: () => Promise<void>
 
   playExhibition: (opponentId: string, style: PlayStyle, isHome: boolean) => MatchResult
+  assignCoach: (coachId: string, league: string | null) => void
 }
 
 // Debounced autosave so rapid taps don't thrash IndexedDB.
@@ -123,6 +125,15 @@ export const useGame = create<GameState>((set, get) => ({
   abandonCareer: async () => {
     await deleteSave()
     set({ career: null, route: 'title' })
+  },
+
+  assignCoach: (coachId, league) => {
+    const { career } = get()
+    if (!career) return
+    const coaches = career.coaches.map((c) => (c.id === coachId ? { ...c, leagueAssignment: league } : c))
+    const next = { ...career, coaches }
+    set({ career: next })
+    scheduleSave(next)
   },
 
   playExhibition: (opponentId, style, isHome) => {

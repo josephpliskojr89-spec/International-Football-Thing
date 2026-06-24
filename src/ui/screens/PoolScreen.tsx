@@ -16,7 +16,7 @@ export function PoolScreen() {
   const [filter, setFilter] = useState<'all' | Position>('all')
 
   const sorted = useMemo(
-    () => [...career.players].sort((a, b) => b.overall - a.overall),
+    () => [...career.players].sort((a, b) => b.knownOverall - a.knownOverall),
     [career.players],
   )
 
