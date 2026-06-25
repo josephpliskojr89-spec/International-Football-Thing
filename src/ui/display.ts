@@ -27,34 +27,46 @@ export function freshnessColor(freshness: number): string {
   return 'var(--bad)'
 }
 
-// Half-width of the displayed rating band, from confidence. 0 = exact (seen in
-// person); null = too little known to even give a range ("??").
-export function ratingMargin(freshness: number): number | null {
-  if (freshness >= 99) return 0 // exact — saw him in person
-  if (freshness >= 88) return 1 // targeted look
+// Weeks an in-person read stays exact, then ~exact, before reverting to a range.
+const EXACT_WEEKS = 14 // ~a quarter: you just saw him, you know him exactly
+const MEMORY_WEEKS = 52 // up to a year: you remember him, shown as ~exact
+
+// Half-width of the displayed rating band, from coverage confidence. Floored —
+// there is always at least a wide range, never "??".
+export function ratingMargin(freshness: number): number {
   if (freshness >= 70) return 2 // well covered
   if (freshness >= 52) return 3
-  if (freshness >= 38) return 5
-  if (freshness >= 22) return 8
-  return null // unknown
+  if (freshness >= 38) return 4
+  if (freshness >= 28) return 6
+  return 8 // floor — a wide range, but you always have some read
 }
 
-// Displayed rating is ALWAYS a band, except an exact in-person read. Centered on
-// the scouted estimate (knownOverall), never the hidden real value.
+// A capped player you saw recently enough to still trust an exact figure for.
+function inPersonMode(p: Player): 'exact' | 'aging' | null {
+  if (p.inPersonOverall === null) return null
+  if (p.inPersonWeeks < EXACT_WEEKS) return 'exact'
+  if (p.inPersonWeeks < MEMORY_WEEKS) return 'aging'
+  return null // older than a year — fall back to a coverage range
+}
+
+// Displayed rating. A recently-capped player shows his exact in-person figure
+// (or ~figure as the memory ages); otherwise a coverage band centered on the
+// scouted estimate. Never the hidden real value, never "??".
 export function displayOverall(p: Player): string {
+  const mode = inPersonMode(p)
+  if (mode === 'exact') return String(p.inPersonOverall)
+  if (mode === 'aging') return `~${p.inPersonOverall}`
   const m = ratingMargin(p.freshness)
-  if (m === null) return '??'
-  if (m === 0) return String(p.knownOverall)
   const lo = Math.max(1, p.knownOverall - m)
   const hi = Math.min(99, p.knownOverall + m)
   return `${lo}–${hi}`
 }
 
-// Compact form for small tokens (pitch): exact number, ~estimate, or ??.
+// Compact form for small tokens (pitch): exact number or ~estimate.
 export function displayOverallShort(p: Player): string {
-  const m = ratingMargin(p.freshness)
-  if (m === null) return '??'
-  if (m === 0) return String(p.knownOverall)
+  const mode = inPersonMode(p)
+  if (mode === 'exact') return String(p.inPersonOverall)
+  if (mode === 'aging') return `~${p.inPersonOverall}`
   return `~${p.knownOverall}`
 }
 

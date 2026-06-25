@@ -16,6 +16,8 @@
 import type { Career, Coach, Player } from './types'
 
 const DECAY_PER_WEEK = 4
+const FLOOR_CONF = 22 // never below this: footage exists for everyone, so the
+//                       worst case is a WIDE range, never "??"
 const COVERAGE_CAP = 78 // standing coverage tops out here (~±2 band), never exact
 const COVERAGE_GAIN = 12 // confidence gained per covered week, up to the cap
 const TARGETED_CONF = 90 // a focused look: ~±1, still not exact
@@ -38,9 +40,9 @@ export function applyCoverageWeek(players: Player[], coaches: Career['coaches'])
           : Math.max(COVERAGE_CAP, p.freshness - 1)
       return syncEstimate(p, conf)
     }
-    if (p.freshness <= 0) return p
-    // Uncovered: estimate freezes, confidence (band) decays.
-    return { ...p, freshness: Math.max(0, p.freshness - DECAY_PER_WEEK) }
+    if (p.freshness <= FLOOR_CONF) return p
+    // Uncovered: estimate freezes, confidence (band) decays toward the floor.
+    return { ...p, freshness: Math.max(FLOOR_CONF, p.freshness - DECAY_PER_WEEK) }
   })
 }
 
@@ -49,9 +51,11 @@ export function targetedLook(p: Player): Player {
   return syncEstimate(p, TARGETED_CONF)
 }
 
-// Seeing a player in person (named in a squad / played for you) — exact read.
+// Seeing a player in person (named in a squad / played for you) — exact read,
+// and records it so the exact figure persists (then ages to ~exact, then a
+// range) over the following year.
 export function seeInPerson(p: Player): Player {
-  return syncEstimate(p, EXACT_CONF)
+  return { ...syncEstimate(p, EXACT_CONF), inPersonOverall: p.overall, inPersonWeeks: 0 }
 }
 
 // Pull the visible estimate up to the real (hidden) values and set confidence.

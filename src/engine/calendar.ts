@@ -27,8 +27,12 @@ export function advanceWeek(career: Career): Career {
   const rng = new RNG(deriveSeed(career.seed, season, week))
   const news: NewsItem[] = []
 
-  // 1) Development moves REAL ability invisibly.
-  let players = career.players.map((p) => developPlayerWeek(p, rng))
+  // 1) Development moves REAL ability invisibly. Also age the memory of any
+  // in-person read so a stale call-up eventually reverts to a range.
+  let players = career.players.map((p) => {
+    const developed = developPlayerWeek(p, rng)
+    return p.inPersonOverall === null ? developed : { ...developed, inPersonWeeks: p.inPersonWeeks + 1 }
+  })
 
   // 2) Season rollover: age everyone, retire the old, bring in a new youth class.
   if (rolledSeason) {

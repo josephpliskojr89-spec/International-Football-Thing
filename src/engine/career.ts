@@ -2,7 +2,7 @@ import type { Career, ManagerStyle, Player } from './types'
 import { SAVE_VERSION, COACH_COUNT } from '@/data/constants'
 import { NATIONS_BY_ID } from '@/data/nations'
 import { FORMATIONS_BY_ID } from '@/data/formations'
-import { generateSquadForNation } from './playerGen'
+import { generateManagerPool } from './playerGen'
 import { RNG, deriveSeed } from './rng'
 import { generateName } from './nameGen'
 
@@ -16,10 +16,11 @@ export interface NewCareerInput {
 export function createCareer(input: NewCareerInput): Career {
   const seed = input.seed ?? makeSeed(input.managerName, input.nationId)
   const nation = NATIONS_BY_ID[input.nationId]
-  const players = generateSquadForNation(nation, seed)
+  const players = generateManagerPool(nation, seed)
 
   const formation = input.style.formation
   const lineup = autoFillLineup(players, formation, input.style)
+  const bench = autoFillBench(players, lineup, input.style)
   const coaches = makeCoaches(seed)
 
   return {
@@ -36,6 +37,7 @@ export function createCareer(input: NewCareerInput): Career {
     players,
     coaches,
     lineup,
+    bench,
     formation,
     news: [
       {
@@ -71,6 +73,36 @@ export function autoFillLineup(
     lineup[slot.id] = pick?.id ?? null
   }
   return lineup
+}
+
+const BENCH_SIZE = 12 // XI + 12 = a 23-man matchday squad (full window squad later)
+
+// Auto-pick the bench: a sensible spread of the next-best players not in the XI
+// (at least one keeper, then best remaining outfield by ability).
+export function autoFillBench(
+  players: Player[],
+  lineup: Record<string, string | null>,
+  style: ManagerStyle,
+): string[] {
+  const inXI = new Set(Object.values(lineup).filter(Boolean) as string[])
+  const available = players.filter((p) => !inXI.has(p.id))
+  const byPos = (pos: Player['position']) =>
+    available
+      .filter((p) => p.position === pos)
+      .sort((a, b) => slotScore(b, b.position, style) - slotScore(a, a.position, style))
+
+  const bench: string[] = []
+  const backupGk = byPos('GK')[0]
+  if (backupGk) bench.push(backupGk.id)
+
+  const rest = available
+    .filter((p) => p.id !== backupGk?.id)
+    .sort((a, b) => slotScore(b, b.position, style) - slotScore(a, a.position, style))
+  for (const p of rest) {
+    if (bench.length >= BENCH_SIZE) break
+    bench.push(p.id)
+  }
+  return bench
 }
 
 function slotScore(p: Player, slotPos: Player['position'], style: ManagerStyle): number {

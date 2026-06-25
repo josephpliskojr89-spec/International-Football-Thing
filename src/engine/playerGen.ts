@@ -11,13 +11,6 @@ import { generateName } from './nameGen'
 import { NATIONS } from '@/data/nations'
 import { maturityFactor } from './ageCurve'
 
-const SENIOR_SPINE: Position[] = [
-  'GK', 'GK', 'GK',
-  'DF', 'DF', 'DF', 'DF', 'DF', 'DF', 'DF',
-  'MF', 'MF', 'MF', 'MF', 'MF', 'MF', 'MF',
-  'FW', 'FW', 'FW', 'FW', 'FW', 'FW',
-]
-
 const LEAGUES = [
   'English First Division',
   'Spanish First Division',
@@ -27,10 +20,29 @@ const LEAGUES = [
   'Dutch First Division',
   'Portuguese First Division',
   'American First Division',
+  'Belgian First Division',
+  'Turkish First Division',
+  'Saudi First Division',
+  'Brazilian First Division',
+  'Domestic League',
 ]
 
 const CLUB_PREFIXES = ['United', 'City', 'Athletic', 'Sporting', 'Real', 'Inter', 'Olympic', 'Rovers']
 const CLUB_PLACES = ['North', 'Port', 'Lake', 'Hill', 'River', 'East', 'West', 'Central', 'Gold', 'Bay']
+
+const TOP_LEAGUES = LEAGUES.slice(0, 5) // English/Spanish/German/Italian/French
+const MID_LEAGUES = LEAGUES.slice(5, 10) // Dutch/Portuguese/American/Belgian/Turkish
+const LOW_LEAGUES = LEAGUES.slice(10) // Saudi/Brazilian/Domestic
+
+// Better players gravitate to stronger leagues; squad/fringe players cluster in
+// mid and domestic leagues. This clustering is what makes coverage a real
+// allocation puzzle — cover the big leagues to track your stars.
+function pickLeague(overall: number, rng: RNG): string {
+  const r = rng.next()
+  if (overall >= 82) return r < 0.7 ? rng.pick(TOP_LEAGUES) : r < 0.93 ? rng.pick(MID_LEAGUES) : rng.pick(LOW_LEAGUES)
+  if (overall >= 72) return r < 0.38 ? rng.pick(TOP_LEAGUES) : r < 0.82 ? rng.pick(MID_LEAGUES) : rng.pick(LOW_LEAGUES)
+  return r < 0.12 ? rng.pick(TOP_LEAGUES) : r < 0.45 ? rng.pick(MID_LEAGUES) : rng.pick(LOW_LEAGUES)
+}
 
 export interface GenPlayerOpts {
   nation: Nation
@@ -97,14 +109,14 @@ export function generatePlayer(opts: GenPlayerOpts): Player {
 
   // The SCOUTED READ. Established seniors carry a fairly accurate public read;
   // young prospects are murky (you don't know what you've got until you watch).
-  // Initial confidence is modest for everyone — at game start you have a rough
-  // range on your pool and an exact read on nobody (you earn those by watching
-  // and calling players up). Young prospects are murkier than established names.
+  // Initial confidence: a baseline range on everyone (footage exists for all
+  // top-flight players — there is no "??"), tighter on established names than on
+  // murky teenagers. Nobody starts exact; you earn that by calling players up.
   const young = age <= 20
   const readNoise = young ? rng.range(-7, 7) : rng.range(-3, 3)
   const knownOverall = clamp(Math.round(overall + readNoise), 25, 99)
   const knownPotential = young ? 0 : clamp(Math.round(potential + rng.range(-5, 5)), 40, 99)
-  const freshness = young ? rng.int(8, 34) : rng.int(40, 66)
+  const freshness = young ? rng.int(28, 44) : rng.int(46, 66)
 
   const eligibleNations = dualNational ? [nation.id, secondNation!.id] : [nation.id]
   const leans: Record<string, number> = {}
@@ -118,7 +130,7 @@ export function generatePlayer(opts: GenPlayerOpts): Player {
     position,
     age,
     club: `${rng.pick(CLUB_PLACES)} ${rng.pick(CLUB_PREFIXES)}`,
-    clubLeague: rng.pick(LEAGUES),
+    clubLeague: pickLeague(overall, rng),
     ratings,
     overall,
     potential,
@@ -130,6 +142,8 @@ export function generatePlayer(opts: GenPlayerOpts): Player {
     knownOverall,
     knownPotential,
     freshness,
+    inPersonOverall: null,
+    inPersonWeeks: 0,
     eligibleNations,
     leans,
     eligibilityState: 'ELIGIBLE',
@@ -137,28 +151,63 @@ export function generatePlayer(opts: GenPlayerOpts): Player {
   }
 }
 
-// A senior pool for a playable nation (used to seed a starting squad).
-export function generateSquadForNation(nation: Nation, seed: number): Player[] {
-  const rng = new RNG(deriveSeed(seed, hashStr(nation.id)))
-  const players: Player[] = []
+// The full eligible pool size for a nation, by pool depth. A national manager
+// chooses ~26 for each window out of a much larger pool — bigger for the major
+// football nations — so selection is a real decision.
+export function poolSize(nation: Nation): number {
+  const depth = (nation.nationRating + nation.youthRating) / 2
+  if (depth >= 84) return 72
+  if (depth >= 80) return 62
+  if (depth >= 75) return 52
+  if (depth >= 70) return 44
+  return 34
+}
 
-  for (let i = 0; i < SENIOR_SPINE.length; i++) {
-    const pos = SENIOR_SPINE[i]
-    const age = i < 14 ? rng.int(23, 33) : rng.int(19, 30)
-    // Starters anchor near the nation's strength; fringe players a notch below.
-    const target = clamp(Math.round(nation.nationRating - 9 + (i < 14 ? 7 : 0) + rng.range(-8, 8)), 42, 93)
-    players.push(generatePlayer({ nation, position: pos, age, seniorTargetOverall: target, rng, index: i }))
+// Generate `size` players as a per-position quality hierarchy: the best in each
+// line sits near the nation's strength, with depth tailing off below, so the
+// auto-XI is balanced and selection depth is real. Plus a few uncommitted
+// dual-national prospects.
+export function generatePool(nation: Nation, seed: number, size: number): Player[] {
+  const rng = new RNG(deriveSeed(seed, hashStr(nation.id)))
+  const counts = positionCounts(size)
+  const players: Player[] = []
+  let index = 0
+
+  for (const [pos, n] of Object.entries(counts) as [Position, number][]) {
+    const top = nation.nationRating + (pos === 'GK' ? -1 : 3)
+    for (let r = 0; r < n; r++) {
+      const rank = n <= 1 ? 0 : r / (n - 1) // 0 = best in the line, 1 = deepest
+      const target = clamp(Math.round(top - Math.pow(rank, 1.1) * 30 + rng.range(-4, 4)), 40, 95)
+      // Deeper squad slots skew younger (prospects) or older (journeymen).
+      const age = rank > 0.6 && rng.bool(0.45) ? rng.int(18, 21) : rng.int(21, 34)
+      players.push(generatePlayer({ nation, position: pos, age, seniorTargetOverall: target, rng, index: index++ }))
+    }
   }
 
-  // A few uncommitted dual-national prospects — these DO use the youth lottery,
-  // so an uncommitted teenage gem is genuinely possible.
   const dualCount = rng.int(2, 4)
   for (let i = 0; i < dualCount; i++) {
     const pos = rng.pick(['DF', 'MF', 'MF', 'FW'] as Position[])
-    players.push(generatePlayer({ nation, position: pos, age: rng.int(17, 21), dualNational: true, rng, index: 100 + i }))
+    players.push(generatePlayer({ nation, position: pos, age: rng.int(17, 21), dualNational: true, rng, index: 500 + i }))
   }
 
   return players
+}
+
+function positionCounts(size: number): Record<Position, number> {
+  const gk = Math.max(3, Math.round(size * 0.1))
+  const df = Math.round(size * 0.34)
+  const mf = Math.round(size * 0.34)
+  const fw = Math.max(2, size - gk - df - mf)
+  return { GK: gk, DF: df, MF: mf, FW: fw }
+}
+
+// The manager's nation gets a full pool; AI opponents only need enough for an XI
+// plus a few subs (regenerated on demand, so kept small for cost).
+export function generateManagerPool(nation: Nation, seed: number): Player[] {
+  return generatePool(nation, seed, poolSize(nation))
+}
+export function generateSquadForNation(nation: Nation, seed: number): Player[] {
+  return generatePool(nation, seed, 18)
 }
 
 // Build a ratings block that evaluates (via overallFor) to roughly `target`,

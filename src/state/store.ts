@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Career, Player, PlayStyle } from '@/engine/types'
-import { createCareer, autoFillLineup, type NewCareerInput } from '@/engine/career'
+import { createCareer, autoFillLineup, autoFillBench, type NewCareerInput } from '@/engine/career'
 import { advanceWeek as advanceWeekEngine } from '@/engine/calendar'
 import { simulateMatch, type MatchResult } from '@/engine/match'
 import { buildManagerTeam, buildOpponentTeam, matchSeed } from '@/engine/matchSetup'
@@ -93,7 +93,8 @@ export const useGame = create<GameState>((set, get) => ({
     const { career } = get()
     if (!career) return
     const lineup = autoFillLineup(career.players, formationId, career.style)
-    const next = { ...career, formation: formationId, lineup }
+    const bench = autoFillBench(career.players, lineup, career.style)
+    const next = { ...career, formation: formationId, lineup, bench }
     set({ career: next })
     scheduleSave(next)
   },
@@ -153,15 +154,19 @@ export const useGame = create<GameState>((set, get) => ({
     const seed = deriveSeed(matchSeed(career.seed, career.year, career.week, opponentId), count)
     const result = simulateMatch(home, away, seed)
 
-    // Players who featured were seen in person: nudge their form toward their
-    // match rating AND grant an exact read on them (the only path to exact).
+    // The whole called-up squad (XI + bench) was seen in person this window, so
+    // they all get an exact read; those who featured also get a form nudge.
     const ratings = isHome ? result.ratingsHome : result.ratingsAway
     const ratingById = new Map(ratings.map((r) => [r.playerId, r.rating]))
+    const squad = new Set<string>([
+      ...(Object.values(career.lineup).filter(Boolean) as string[]),
+      ...career.bench,
+    ])
     const players: Player[] = career.players.map((p) => {
+      if (!squad.has(p.id)) return p
       const r = ratingById.get(p.id)
-      if (r === undefined) return p
-      const delta = (r - 6.5) * 3
-      const formed = { ...p, form: Math.max(20, Math.min(99, Math.round(p.form + delta))) }
+      const formed =
+        r === undefined ? p : { ...p, form: Math.max(20, Math.min(99, Math.round(p.form + (r - 6.5) * 3))) }
       return seeInPerson(formed)
     })
 

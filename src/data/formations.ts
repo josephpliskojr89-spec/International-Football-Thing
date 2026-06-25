@@ -152,3 +152,20 @@ export const FORMATIONS_BY_ID: Record<string, Formation> = Object.fromEntries(
 )
 
 export const DEFAULT_FORMATION = '4-3-3'
+
+// Clean role label for a slot id (strips left/right qualifiers to a canonical
+// role): LCB -> CB, LST -> ST, LDM -> DM, RAM -> CAM, etc.
+export function roleLabel(slotId: string): string {
+  const map: Record<string, string> = {
+    GK: 'GK',
+    LB: 'LB', RB: 'RB', LWB: 'LWB', RWB: 'RWB',
+    LCB: 'CB', RCB: 'CB', CB: 'CB',
+    LM: 'LM', RM: 'RM',
+    LCM: 'CM', RCM: 'CM', CM: 'CM',
+    LDM: 'DM', RDM: 'DM',
+    LAM: 'CAM', RAM: 'CAM', CAM: 'CAM',
+    ST: 'ST', LST: 'ST', RST: 'ST',
+    LW: 'LW', RW: 'RW',
+  }
+  return map[slotId] ?? slotId
+}

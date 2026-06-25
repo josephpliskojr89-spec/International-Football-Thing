@@ -48,8 +48,14 @@ export interface Player {
   // knownOverall/knownPotential are the player's *last observed* values. They
   // sync to the real ones on coverage and otherwise stay frozen (going stale).
   knownOverall: number
-  knownPotential: number // 0 = not yet read
-  freshness: number // 100 = sharp; decays while uncovered
+  knownPotential: number // 0 = not yet projected
+  freshness: number // coverage confidence -> range width (floored, never unknown)
+
+  // Last EXACT read from seeing him in person (a call-up). null = never capped
+  // by you. inPersonWeeks counts weeks since; a recent cap shows exact, an aging
+  // one shows ~exact, and after a year it falls back to a coverage range.
+  inPersonOverall: number | null
+  inPersonWeeks: number
 
   // ---- eligibility ----
   eligibleNations: string[]
@@ -106,9 +112,10 @@ export interface Career {
   week: number // 1..52
   exhibitionCount: number // # of one-off friendlies played; varies their seed
 
-  players: Player[] // the manager nation's pool (shell: generated squad+fringe)
+  players: Player[] // the manager nation's full eligible pool
   coaches: Coach[]
-  lineup: Record<string, string | null> // formation slot id -> player id
+  lineup: Record<string, string | null> // formation slot id -> player id (the XI)
+  bench: string[] // player ids on the bench (rest of the matchday squad)
   formation: string
 
   news: NewsItem[]
