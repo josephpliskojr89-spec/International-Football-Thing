@@ -8,7 +8,8 @@
 import type { Nation, Player, Position, Ratings } from './types'
 import { RNG, deriveSeed, hashStr } from './rng'
 import { generateName } from './nameGen'
-import { NATIONS } from '@/data/nations'
+import { ALL_NATIONS, ALL_NATIONS_BY_ID } from '@/data/nations'
+import { HERITAGE, HERITAGE_FLAVOR_CHANCE } from '@/data/heritage'
 import { maturityFactor } from './ageCurve'
 
 const LEAGUES = [
@@ -291,9 +292,28 @@ export function overallFor(position: Position, r: Ratings): number {
   return Math.round(v)
 }
 
+// A dual-national's second eligibility, drawn from plausible migration patterns
+// (heritage-weighted) with a small chance of an out-of-pattern surprise.
 function pickSecondNation(nation: Nation, rng: RNG): Nation {
-  const others = NATIONS.filter((x) => x.id !== nation.id)
-  return rng.pick(others)
+  const others = ALL_NATIONS.filter((x) => x.id !== nation.id)
+
+  // Flavor randomness — the occasional unexpected heritage.
+  if (rng.bool(HERITAGE_FLAVOR_CHANCE)) return rng.pick(others)
+
+  const weights = (HERITAGE[nation.id] ?? []).filter(([id]) => ALL_NATIONS_BY_ID[id])
+  const total = weights.reduce((s, [, w]) => s + w, 0)
+  if (total > 0) {
+    let r = rng.next() * total
+    for (const [id, w] of weights) {
+      r -= w
+      if (r <= 0) return ALL_NATIONS_BY_ID[id]
+    }
+  }
+
+  // Fallback for nations without a heritage entry: a confederation neighbour,
+  // else anyone.
+  const sameConf = others.filter((x) => x.confederation === nation.confederation)
+  return rng.pick(sameConf.length ? sameConf : others)
 }
 
 function clamp(v: number, lo: number, hi: number): number {
