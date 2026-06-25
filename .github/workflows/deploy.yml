@@ -46,7 +46,17 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment-retry.outputs.page_url }}
     steps:
+      # A Pages deployment from a previous push can still be propagating
+      # server-side, making this one fail with "deployment already in progress".
+      # First attempt is allowed to fail; we then wait and retry once.
       - id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - name: Wait for the previous deployment to finish
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 90
+      - id: deployment-retry
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v4
