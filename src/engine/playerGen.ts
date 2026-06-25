@@ -97,11 +97,14 @@ export function generatePlayer(opts: GenPlayerOpts): Player {
 
   // The SCOUTED READ. Established seniors carry a fairly accurate public read;
   // young prospects are murky (you don't know what you've got until you watch).
+  // Initial confidence is modest for everyone — at game start you have a rough
+  // range on your pool and an exact read on nobody (you earn those by watching
+  // and calling players up). Young prospects are murkier than established names.
   const young = age <= 20
   const readNoise = young ? rng.range(-7, 7) : rng.range(-3, 3)
   const knownOverall = clamp(Math.round(overall + readNoise), 25, 99)
-  const knownPotential = young ? 0 : clamp(Math.round(potential + rng.range(-4, 4)), 40, 99)
-  const freshness = young ? rng.int(10, 45) : rng.int(55, 90)
+  const knownPotential = young ? 0 : clamp(Math.round(potential + rng.range(-5, 5)), 40, 99)
+  const freshness = young ? rng.int(8, 34) : rng.int(40, 66)
 
   const eligibleNations = dualNational ? [nation.id, secondNation!.id] : [nation.id]
   const leans: Record<string, number> = {}

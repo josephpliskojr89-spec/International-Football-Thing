@@ -3,7 +3,7 @@ import { RNG } from '@/engine/rng'
 import { drawPotential, generatePlayer, overallForRaw } from '@/engine/playerGen'
 import { developPlayerWeek, agePlayerOneYear } from '@/engine/development'
 import { generateYouthIntake } from '@/engine/youth'
-import { applyCoverageWeek, targetedLook } from '@/engine/scouting'
+import { applyCoverageWeek, targetedLook, seeInPerson } from '@/engine/scouting'
 import { createCareer } from '@/engine/career'
 import { NATIONS_BY_ID } from '@/data/nations'
 import type { Player } from '@/engine/types'
@@ -119,7 +119,7 @@ describe('scouting coverage', () => {
     })
   })
 
-  it('a targeted look syncs the read to the real value', () => {
+  it('a targeted look tightens the band but is NOT exact; only in-person is exact', () => {
     const career = createCareer({
       managerName: 'T',
       nationId: 'USA',
@@ -127,10 +127,33 @@ describe('scouting coverage', () => {
       seed: 12,
     })
     const fuzzy = { ...career.players[0], freshness: 5, knownOverall: 1, knownPotential: 0 }
+
     const looked = targetedLook(fuzzy)
-    expect(looked.knownOverall).toBe(fuzzy.overall)
-    expect(looked.knownPotential).toBe(fuzzy.potential)
-    expect(looked.freshness).toBe(100)
+    expect(looked.knownOverall).toBe(fuzzy.overall) // estimate syncs
+    expect(looked.freshness).toBeGreaterThan(80) // tight...
+    expect(looked.freshness).toBeLessThan(100) // ...but never exact from scouting
+
+    const seen = seeInPerson(fuzzy)
+    expect(seen.freshness).toBe(100) // call-up / in person = exact
+    expect(seen.knownOverall).toBe(fuzzy.overall)
+  })
+
+  it('standing coverage tops out below exact (you must see a player to know him exactly)', () => {
+    const career = createCareer({
+      managerName: 'T',
+      nationId: 'JPN',
+      style: { formation: '4-3-3', approach: 'Balanced', preference: 'Balanced' },
+      seed: 21,
+    })
+    const league = career.players[0].clubLeague
+    const coaches = [{ id: 'c0', name: 'X', leagueAssignment: league, targetedLookUsed: false }]
+    let players = career.players
+    for (let w = 0; w < 30; w++) players = applyCoverageWeek(players, coaches)
+    const covered = players.filter((p) => p.clubLeague === league)
+    for (const p of covered) {
+      expect(p.freshness).toBeLessThan(99) // coverage never makes a read exact
+      expect(p.freshness).toBeGreaterThanOrEqual(70) // but does reach a tight band
+    }
   })
 })
 

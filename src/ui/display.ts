@@ -13,34 +13,54 @@ export function formColor(form: number): string {
 }
 
 export function freshnessLabel(freshness: number): string {
-  if (freshness >= 80) return 'Sharp'
-  if (freshness >= 50) return 'Drifting'
-  if (freshness >= 25) return 'Stale'
-  return 'Fuzzy'
+  if (freshness >= 99) return 'Known'
+  if (freshness >= 72) return 'Sharp'
+  if (freshness >= 45) return 'Rough'
+  if (freshness >= 25) return 'Vague'
+  return 'Unknown'
 }
 
 export function freshnessColor(freshness: number): string {
-  if (freshness >= 80) return 'var(--good)'
-  if (freshness >= 50) return 'var(--ok)'
+  if (freshness >= 72) return 'var(--good)'
+  if (freshness >= 45) return 'var(--ok)'
   if (freshness >= 25) return 'var(--warn)'
   return 'var(--bad)'
 }
 
-// Displayed rating uses the SCOUTED read (knownOverall), never the hidden real
-// value. Sharp reads show the exact number; fuzzy reads blur it, because you
-// genuinely don't know it precisely anymore.
-export function displayOverall(p: Player): string {
-  const v = p.knownOverall
-  if (p.freshness >= 80) return String(v)
-  if (p.freshness >= 50) return `${v - 1}–${v + 1}`
-  if (p.freshness >= 25) return `~${Math.round(v / 5) * 5}`
-  return '??'
+// Half-width of the displayed rating band, from confidence. 0 = exact (seen in
+// person); null = too little known to even give a range ("??").
+export function ratingMargin(freshness: number): number | null {
+  if (freshness >= 99) return 0 // exact — saw him in person
+  if (freshness >= 88) return 1 // targeted look
+  if (freshness >= 70) return 2 // well covered
+  if (freshness >= 52) return 3
+  if (freshness >= 38) return 5
+  if (freshness >= 22) return 8
+  return null // unknown
 }
 
-// Potential read: unknown until scouted, then shown as a star band whose
-// sharpness still depends on freshness.
+// Displayed rating is ALWAYS a band, except an exact in-person read. Centered on
+// the scouted estimate (knownOverall), never the hidden real value.
+export function displayOverall(p: Player): string {
+  const m = ratingMargin(p.freshness)
+  if (m === null) return '??'
+  if (m === 0) return String(p.knownOverall)
+  const lo = Math.max(1, p.knownOverall - m)
+  const hi = Math.min(99, p.knownOverall + m)
+  return `${lo}–${hi}`
+}
+
+// Compact form for small tokens (pitch): exact number, ~estimate, or ??.
+export function displayOverallShort(p: Player): string {
+  const m = ratingMargin(p.freshness)
+  if (m === null) return '??'
+  if (m === 0) return String(p.knownOverall)
+  return `~${p.knownOverall}`
+}
+
+// Potential read: unknown until you've watched enough, then a coarse star band.
 export function displayPotential(p: Player): string {
-  if (p.knownPotential === 0 || p.freshness < 25) return '?'
+  if (p.knownPotential === 0 || p.freshness < 38) return '?'
   return starString(p.knownPotential)
 }
 

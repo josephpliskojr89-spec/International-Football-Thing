@@ -4,6 +4,7 @@ import { createCareer, autoFillLineup, type NewCareerInput } from '@/engine/care
 import { advanceWeek as advanceWeekEngine } from '@/engine/calendar'
 import { simulateMatch, type MatchResult } from '@/engine/match'
 import { buildManagerTeam, buildOpponentTeam, matchSeed } from '@/engine/matchSetup'
+import { seeInPerson } from '@/engine/scouting'
 import { deriveSeed } from '@/engine/rng'
 import { NATIONS_BY_ID } from '@/data/nations'
 import { saveCareer, loadCareer, deleteSave } from './persist'
@@ -152,15 +153,16 @@ export const useGame = create<GameState>((set, get) => ({
     const seed = deriveSeed(matchSeed(career.seed, career.year, career.week, opponentId), count)
     const result = simulateMatch(home, away, seed)
 
-    // Apply a light form nudge to the manager's players who featured, pulling
-    // form toward their match rating — so results carry into the next match.
+    // Players who featured were seen in person: nudge their form toward their
+    // match rating AND grant an exact read on them (the only path to exact).
     const ratings = isHome ? result.ratingsHome : result.ratingsAway
     const ratingById = new Map(ratings.map((r) => [r.playerId, r.rating]))
     const players: Player[] = career.players.map((p) => {
       const r = ratingById.get(p.id)
       if (r === undefined) return p
       const delta = (r - 6.5) * 3
-      return { ...p, form: Math.max(20, Math.min(99, Math.round(p.form + delta))) }
+      const formed = { ...p, form: Math.max(20, Math.min(99, Math.round(p.form + delta))) }
+      return seeInPerson(formed)
     })
 
     const headline = matchHeadline(result, isHome, career.year, career.week, count)

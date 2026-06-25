@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import type { Player } from '@/engine/types'
 import { FORMATIONS_BY_ID } from '@/data/formations'
-import { positionColor, displayOverall } from '../display'
+import { positionColor, displayOverallShort } from '../display'
 
 // Drag-to-position formation board. Pointer events make it work identically for
 // touch (one thumb) and mouse. Drag a token onto another slot to swap; a simple
@@ -117,7 +117,7 @@ export function FormationPitch({
               className={`slot__token ${player ? '' : 'slot__token--empty'}`}
               style={player ? { background: positionColor(player.position) } : undefined}
             >
-              {player ? displayOverall(player) : slot.position}
+              {player ? displayOverallShort(player) : slot.position}
             </div>
             <div className="slot__name">{player ? lastName(player.name) : slot.id}</div>
           </div>
@@ -138,7 +138,7 @@ export function FormationPitch({
             opacity: 0.9,
           }}
         >
-          {displayOverall(ghostPlayer)}
+          {displayOverallShort(ghostPlayer)}
         </div>
       )}
     </div>
