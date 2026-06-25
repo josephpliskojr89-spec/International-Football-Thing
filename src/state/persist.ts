@@ -9,6 +9,7 @@
 
 import { get, set, del } from 'idb-keyval'
 import type { Career } from '@/engine/types'
+import { migrateCareer } from '@/engine/migrate'
 
 const SAVE_KEY = 'ntm:career'
 const SETTINGS_KEY = 'ntm:settings'
@@ -34,7 +35,11 @@ export async function saveCareer(career: Career): Promise<void> {
 export async function loadCareer(): Promise<Career | undefined> {
   if (!storageAvailable) return undefined
   try {
-    return (await get(SAVE_KEY)) as Career | undefined
+    const raw = await get(SAVE_KEY)
+    if (raw === undefined) return undefined
+    // Always migrate on load so a save from an older version can never crash a
+    // screen that expects newer fields.
+    return migrateCareer(raw)
   } catch (e) {
     console.warn('loadCareer failed', e)
     return undefined

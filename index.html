@@ -15,32 +15,19 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Self-heal guard: if the app hasn't mounted a few seconds after load
-      // (e.g. a stale service worker or a half-updated cache served broken
-      // assets and the screen is white), unregister SWs, clear caches, and
-      // reload exactly once. Prevents the recurring "clear browsing data by
-      // hand" dance after deploys.
+      // Gentle self-heal: if the app still hasn't painted ~9s after load, do a
+      // single plain reload — enough to recover a transient asset hiccup, but it
+      // does NOT clear caches or unregister the service worker (that removes the
+      // offline fallback and can strand a slow connection on a white screen).
       (function () {
         var ONCE = 'ntm-self-heal';
         setTimeout(function () {
           var root = document.getElementById('root');
           if (root && root.childElementCount > 0) return; // app mounted fine
-          if (sessionStorage.getItem(ONCE)) return; // only attempt once per session
+          if (sessionStorage.getItem(ONCE)) return; // only ever once per session
           sessionStorage.setItem(ONCE, '1');
-          var done = function () { location.reload(); };
-          var clearCaches = function () {
-            if (window.caches && caches.keys) {
-              caches.keys().then(function (keys) {
-                Promise.all(keys.map(function (k) { return caches.delete(k); })).then(done, done);
-              }, done);
-            } else { done(); }
-          };
-          if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(function (regs) {
-              Promise.all(regs.map(function (r) { return r.unregister(); })).then(clearCaches, clearCaches);
-            }, clearCaches);
-          } else { clearCaches(); }
-        }, 4000);
+          location.reload();
+        }, 9000);
       })();
     </script>
   </body>
