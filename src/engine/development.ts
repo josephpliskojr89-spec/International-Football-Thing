@@ -19,6 +19,7 @@ const DECLINE_WEEKLY = 0.0009 // base per-week decline once past peak
 export function developPlayerWeek(p: Player, rng: RNG): Player {
   const peak = peakAge(p.position)
   const real = overallForRaw(p.position, p.ratings)
+  if (real <= 0) return p // guard: scaling by 0 would blow ratings to Infinity
   let newOverall = real
 
   if (p.age <= peak) {

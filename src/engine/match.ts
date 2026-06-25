@@ -6,7 +6,7 @@
 import type { Player, PlayStyle, Position } from './types'
 import { MATCH, FOCAL } from '@/data/constants'
 import { FORMATIONS_BY_ID } from '@/data/formations'
-import { RNG } from './rng'
+import { RNG, poisson } from './rng'
 import { overallFor, overallForRaw } from './playerGen'
 
 export interface MatchTeam {
@@ -224,17 +224,6 @@ function clampFloor(xg: number): number {
   return Math.max(MATCH.xgFloor, xg)
 }
 
-// ---- Step 5: Poisson sampler (Knuth) ----
-function poisson(rng: RNG, lambda: number): number {
-  const L = Math.exp(-lambda)
-  let k = 0
-  let p = 1
-  do {
-    k++
-    p *= rng.next()
-  } while (p > L)
-  return k - 1
-}
 
 // ---- Step 6: narrative back-fill ----
 interface Scorer {

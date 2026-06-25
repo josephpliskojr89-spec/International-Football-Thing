@@ -7,7 +7,7 @@ import { buildManagerTeam, buildOpponentTeam } from '@/engine/matchSetup'
 import { seeInPerson, targetedLook } from '@/engine/scouting'
 import { isSquadLocked } from '@/engine/fixtures'
 import { managerFixture, resolveMatchday, createCampaign } from '@/engine/campaign'
-import { deriveSeed } from '@/engine/rng'
+import { deriveSeed, hashStr } from '@/engine/rng'
 import { ALL_NATIONS_BY_ID } from '@/data/nations'
 import { windowAtWeek, fixtureKey } from '@/data/windows'
 import { saveCareer, loadCareer, deleteSave } from './persist'
@@ -41,7 +41,6 @@ interface GameState {
 
   advanceWeek: () => void
   setFormation: (formationId: string) => void
-  setLineupSlot: (slotId: string, playerId: string | null) => void
   swapLineupSlots: (slotA: string, slotB: string) => void
   saveNow: () => Promise<void>
   abandonCareer: () => Promise<void>
@@ -70,6 +69,25 @@ function scheduleSave(career: Career | null) {
   saveTimer = setTimeout(() => {
     void saveCareer(career)
   }, 400)
+}
+
+// Flush any pending debounced save immediately — used when the app is about to
+// be backgrounded or closed (PWAs are frequently frozen inside the debounce
+// window, which would otherwise lose the last action).
+function flushSave() {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
+  const career = useGame.getState().career
+  if (career) void saveCareer(career)
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushSave()
+  })
+  window.addEventListener('pagehide', flushSave)
 }
 
 export const useGame = create<GameState>((set, get) => ({
@@ -116,14 +134,6 @@ export const useGame = create<GameState>((set, get) => ({
     const bench = career.registeredSquad.filter((id) => !xiIds.includes(id))
     const tactics = keepFocalIfInXI(career.tactics, xiIds)
     const next = { ...career, formation: formationId, lineup, bench, tactics }
-    set({ career: next })
-    scheduleSave(next)
-  },
-
-  setLineupSlot: (slotId, playerId) => {
-    const { career } = get()
-    if (!career) return
-    const next = { ...career, lineup: { ...career.lineup, [slotId]: playerId } }
     set({ career: next })
     scheduleSave(next)
   },
@@ -335,8 +345,3 @@ function qualificationNews(campaign: Career['campaign'], myId: string, year: num
   }
 }
 
-function hashStr(s: string): number {
-  let h = 2166136261
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619)
-  return h >>> 0
-}

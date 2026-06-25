@@ -18,8 +18,7 @@ export const WEEKS_PER_YEAR = 52
 // ---- Scouting ----
 export const COACH_COUNT = 3 // fixed for v1 (manager progression deferred)
 
-// ---- Squad shape ----
-export const SQUAD_SIZE = 23
+// (The registered-squad size lives in engine/fixtures.ts as SQUAD_SIZE = 26.)
 
 // ---- Tactics: focal point ("play through" a chosen star) ----
 export const FOCAL = {

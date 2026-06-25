@@ -6,7 +6,7 @@
 
 import type { Campaign, GroupFixture, GroupStanding, Nation, PlayedResult } from './types'
 import { ALL_NATIONS_BY_ID, nationsInConfederation } from '@/data/nations'
-import { RNG, deriveSeed } from './rng'
+import { RNG, deriveSeed, hashStr } from './rng'
 import { simulateMatch } from './match'
 import { simulateLite } from './matchLite'
 import { buildOpponentTeam } from './matchSetup'
@@ -156,7 +156,13 @@ function applyResult(standings: GroupStanding[], r: PlayedResult): void {
 }
 
 function sortStandings(standings: GroupStanding[]): void {
-  standings.sort((a, b) => b.pts - a.pts || b.gf - b.ga - (a.gf - a.ga) || b.gf - a.gf)
+  standings.sort(
+    (a, b) =>
+      b.pts - a.pts ||
+      b.gf - b.ga - (a.gf - a.ga) ||
+      b.gf - a.gf ||
+      a.nationId.localeCompare(b.nationId), // deterministic final tiebreaker
+  )
 }
 
 // ---- round-robin scheduling (circle method, doubled for home & away) ----
@@ -203,8 +209,3 @@ function shuffle<T>(arr: T[], rng: RNG): T[] {
   return a
 }
 
-function hashStr(s: string): number {
-  let h = 2166136261
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619)
-  return h >>> 0
-}

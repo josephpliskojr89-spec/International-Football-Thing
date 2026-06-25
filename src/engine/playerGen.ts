@@ -6,7 +6,7 @@
 // hand-placed — wonderkids fall out of the tail naturally.
 
 import type { Nation, Player, Position, Ratings } from './types'
-import { RNG, deriveSeed } from './rng'
+import { RNG, deriveSeed, hashStr } from './rng'
 import { generateName } from './nameGen'
 import { NATIONS } from '@/data/nations'
 import { maturityFactor } from './ageCurve'
@@ -300,8 +300,3 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v))
 }
 
-function hashStr(s: string): number {
-  let h = 2166136261
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619)
-  return h >>> 0
-}

@@ -4,7 +4,7 @@
 // of the world, at a fraction of the cost.
 
 import { MATCH } from '@/data/constants'
-import { RNG } from './rng'
+import { RNG, poisson } from './rng'
 
 export interface LiteResult {
   goalsA: number
@@ -29,13 +29,3 @@ export function simulateLite(
   return { goalsA: poisson(rng, xgA), goalsB: poisson(rng, xgB) }
 }
 
-function poisson(rng: RNG, lambda: number): number {
-  const L = Math.exp(-lambda)
-  let k = 0
-  let p = 1
-  do {
-    k++
-    p *= rng.next()
-  } while (p > L)
-  return k - 1
-}

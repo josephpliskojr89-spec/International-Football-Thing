@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { createCareer } from '@/engine/career'
 import { simulateMatch } from '@/engine/match'
 import { simulateLite } from '@/engine/matchLite'
-import { buildManagerTeam, buildOpponentTeam, matchSeed } from '@/engine/matchSetup'
+import { buildManagerTeam, buildOpponentTeam } from '@/engine/matchSetup'
 import { NATIONS_BY_ID } from '@/data/nations'
 
 function career(nationId: string, seed = 123) {
@@ -19,7 +19,7 @@ describe('match engine', () => {
     const c = career('BRA')
     const home = buildManagerTeam(c, true)
     const away = buildOpponentTeam(NATIONS_BY_ID['ARG'], c.seed, false)
-    const seed = matchSeed(c.seed, c.year, c.week, 'ARG')
+    const seed = 1234567
     const a = simulateMatch(home, away, seed)
     const b = simulateMatch(home, away, seed)
     expect(a.homeGoals).toBe(b.homeGoals)

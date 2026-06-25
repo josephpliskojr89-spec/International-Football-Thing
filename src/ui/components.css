@@ -445,11 +445,6 @@
   border-radius: 6px;
 }
 
-/* play-match call to action on the schedule */
-.playmatch {
-  background: linear-gradient(135deg, var(--pitch), #15683a);
-  border: 1px solid #0d3d20;
-}
 
 /* squad-selection check toggle */
 .selcheck {

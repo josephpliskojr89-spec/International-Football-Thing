@@ -8,7 +8,7 @@
 // only via news hype or scouting coverage.
 
 import type { Nation, Player, Position } from './types'
-import { RNG, deriveSeed } from './rng'
+import { RNG, deriveSeed, hashStr } from './rng'
 import { generatePlayer } from './playerGen'
 
 export interface YouthIntake {
@@ -56,8 +56,3 @@ export function generateYouthIntake(nation: Nation, year: number, careerSeed: nu
   return { players, golden }
 }
 
-function hashStr(s: string): number {
-  let h = 2166136261
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619)
-  return h >>> 0
-}

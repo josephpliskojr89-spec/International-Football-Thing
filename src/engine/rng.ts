@@ -51,3 +51,23 @@ export function deriveSeed(base: number, ...parts: number[]): number {
   }
   return h >>> 0
 }
+
+// FNV-1a string hash -> 32-bit int. Shared so seeding stays consistent.
+export function hashStr(s: string): number {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619)
+  return h >>> 0
+}
+
+// Poisson sampler (Knuth) — the football scoreline backbone for both the full
+// and lightweight engines.
+export function poisson(rng: RNG, lambda: number): number {
+  const L = Math.exp(-lambda)
+  let k = 0
+  let p = 1
+  do {
+    k++
+    p *= rng.next()
+  } while (p > L)
+  return k - 1
+}

@@ -7,7 +7,6 @@ import { NATIONS_BY_ID } from '@/data/nations'
 import { FORMATIONS_BY_ID } from '@/data/formations'
 import { generateSquadForNation } from './playerGen'
 import { autoFillLineup } from './career'
-import { deriveSeed } from './rng'
 import type { MatchTeam } from './match'
 
 // A nation's default tactical identity maps to a sensible formation for the AI.
@@ -17,19 +16,6 @@ const IDENTITY_FORMATION: Record<PlayStyle, string> = {
   Direct: '4-4-2',
   HighPress: '4-2-3-1',
   Balanced: '4-3-3',
-}
-
-// Manager approach -> a default match style (the player can override pre-match).
-export function defaultStyleForApproach(approach: Career['style']['approach']): PlayStyle {
-  switch (approach) {
-    case 'Attacking':
-      return 'HighPress'
-    case 'Defensive':
-      return 'Counter'
-    case 'Balanced':
-    default:
-      return 'Balanced'
-  }
 }
 
 // Uses the career's persistent tactics (style + focal point) to build the team.
@@ -74,12 +60,4 @@ export function buildOpponentTeam(opponent: Nation, careerSeed: number, isHome: 
     style: opponent.tacticalIdentity,
     isHome,
   }
-}
-
-// Derive a stable, unique seed for one match so replays during a session are
-// reproducible but each fixture differs.
-export function matchSeed(careerSeed: number, year: number, week: number, opponentId: string): number {
-  let h = 0
-  for (let i = 0; i < opponentId.length; i++) h = (h * 31 + opponentId.charCodeAt(i)) | 0
-  return deriveSeed(careerSeed, year, week, h)
 }

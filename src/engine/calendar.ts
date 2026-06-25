@@ -5,6 +5,8 @@ import { NATIONS_BY_ID } from '@/data/nations'
 import { developPlayerWeek, agePlayerOneYear } from './development'
 import { applyCoverageWeek } from './scouting'
 import { generateYouthIntake } from './youth'
+import { autoFillLineup } from './career'
+import { SQUAD_SIZE } from './fixtures'
 
 // The master week loop. Each week: the development engine moves real ability,
 // scouting coverage refreshes (or fails to refresh) reads, and the world emits
@@ -68,12 +70,41 @@ export function advanceWeek(career: Career): Career {
   news.push(...hypeNews(players, career, year, week, rng))
   news.push(...flavorNews(players, career, year, week, rng))
 
+  // 5) On rollover, retirements may have removed squad members — reconcile the
+  // registered 26 / XI / bench / focal point so we never field a dead player id.
+  let { registeredSquad, lineup, bench, tactics } = career
+  if (rolledSeason) {
+    const validIds = new Set(players.map((p) => p.id))
+    registeredSquad = registeredSquad.filter((id) => validIds.has(id))
+    // Top up any vacancies left by retirements with the best available pool
+    // players (this is where promoted youth get their first call-up).
+    if (registeredSquad.length < SQUAD_SIZE) {
+      const inSquad = new Set(registeredSquad)
+      const fill = players.filter((p) => !inSquad.has(p.id)).sort((a, b) => b.overall - a.overall)
+      for (const p of fill) {
+        if (registeredSquad.length >= SQUAD_SIZE) break
+        registeredSquad.push(p.id)
+      }
+    }
+    const squadPlayers = players.filter((p) => registeredSquad.includes(p.id))
+    lineup = autoFillLineup(squadPlayers, career.formation, career.style)
+    const xiIds = Object.values(lineup).filter(Boolean) as string[]
+    bench = registeredSquad.filter((id) => !xiIds.includes(id))
+    if (tactics.focalPointId && !xiIds.includes(tactics.focalPointId)) {
+      tactics = { ...tactics, focalPointId: null }
+    }
+  }
+
   return {
     ...career,
     week,
     year,
     season,
     players,
+    registeredSquad,
+    lineup,
+    bench,
+    tactics,
     // Targeted looks persist across weeks; they refresh per inter-window period
     // (reset when a window match is played), not every week.
     coaches: career.coaches,

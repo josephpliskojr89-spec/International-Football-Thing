@@ -18,6 +18,9 @@ export function MatchScreen() {
     ? career.players.find((p) => p.id === career.tactics.focalPointId)
     : null
   const [result, setResult] = useState<MatchResult | null>(null)
+  // Capture the played-match venue at kickoff: after playing, `career` advances
+  // to the next fixture, so the result view must not re-read the live fixture.
+  const [playedHome, setPlayedHome] = useState(false)
 
   if (!window || !fixture) {
     return (
@@ -40,10 +43,16 @@ export function MatchScreen() {
   const opp = ALL_NATIONS_BY_ID[fixture.opponentId]
 
   if (result) {
-    return <MatchResultView result={result} managerIsHome={isHome} onDone={() => go('schedule')} />
+    return <MatchResultView result={result} managerIsHome={playedHome} onDone={() => go('schedule')} />
   }
 
-  const kickOff = () => setResult(playScheduledMatch())
+  const kickOff = () => {
+    const r = playScheduledMatch()
+    if (r) {
+      setPlayedHome(isHome) // captured before career advances
+      setResult(r)
+    }
+  }
 
   return (
     <div className="screen">
@@ -148,7 +157,7 @@ function MatchResultView({
           home={result.xgHome}
           away={result.xgAway}
           unit=""
-          ratio={result.xgHome / (result.xgHome + result.xgAway)}
+          ratio={result.xgHome + result.xgAway > 0 ? result.xgHome / (result.xgHome + result.xgAway) : 0.5}
         />
 
         {result.motm && (
