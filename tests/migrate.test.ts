@@ -53,6 +53,21 @@ describe('save migration', () => {
     expect(twice.season).toBe(once.season)
   })
 
+  it('repairs an empty/incomplete lineup so the match engine has an XI', () => {
+    const c = migrateCareer({
+      ...OLD_SAVE,
+      lineup: {}, // empty — would otherwise field nobody
+      players: Array.from({ length: 16 }, (_, i) => ({
+        id: `pl${i}`, name: `P${i}`, nationality: 'BRA', position: ['GK', 'DF', 'MF', 'FW'][i % 4],
+        age: 25, club: 'X', clubLeague: 'Domestic League',
+        ratings: { finishing: 60, pace: 60, technique: 60, passing: 60, physical: 60, mental: 60, defending: 60, goalkeeping: 60 },
+        form: 60, overall: 65, potential: 70,
+      })),
+    })
+    const filled = Object.values(c.lineup).filter(Boolean)
+    expect(filled.length).toBeGreaterThanOrEqual(11)
+  })
+
   it('tolerates a wildly partial object without throwing', () => {
     expect(() => migrateCareer({})).not.toThrow()
     expect(() => migrateCareer({ players: [{}] })).not.toThrow()

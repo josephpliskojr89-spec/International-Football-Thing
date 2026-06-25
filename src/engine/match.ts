@@ -232,6 +232,7 @@ interface Scorer {
 function assignScorers(team: MatchTeam, goals: number, rng: RNG): Scorer[] {
   if (goals === 0) return []
   const onField = Object.values(team.playerBySlot).filter((p): p is Player => !!p)
+  if (onField.length === 0) return [] // no XI selected — no named scorers
   // Weight by finishing + form; forwards dominate, but anyone can score.
   const weighted = onField.map((p) => ({
     p,

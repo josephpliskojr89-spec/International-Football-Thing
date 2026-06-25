@@ -6,18 +6,29 @@
 import type { Career, Player } from './types'
 import { SAVE_VERSION } from '@/data/constants'
 import { overallFor } from './playerGen'
-import { autoFillBench } from './career'
+import { autoFillLineup, autoFillBench } from './career'
+import { FORMATIONS_BY_ID, DEFAULT_FORMATION } from '@/data/formations'
 
 export function migrateCareer(raw: unknown): Career {
   const c = raw as Record<string, any>
   const players: Player[] = Array.isArray(c.players) ? c.players.map(migratePlayer) : []
 
-  const formation: string = c.formation ?? '4-3-3'
-  const lineup: Record<string, string | null> = c.lineup ?? {}
-  let bench: string[] = Array.isArray(c.bench) ? c.bench : []
+  const formation: string = FORMATIONS_BY_ID[c.formation] ? c.formation : DEFAULT_FORMATION
   const style = c.style ?? { formation, approach: 'Balanced', preference: 'Balanced' }
 
+  // Repair a missing/empty/incomplete lineup so the match engine always has an
+  // XI to field (an empty lineup would otherwise produce no on-field players).
+  const slots = FORMATIONS_BY_ID[formation].slots
+  const rawLineup: Record<string, string | null> = c.lineup ?? {}
+  const validIds = new Set(players.map((p) => p.id))
+  const filledSlots = slots.filter((s) => rawLineup[s.id] && validIds.has(rawLineup[s.id] as string))
+  const lineup =
+    players.length > 0 && filledSlots.length < slots.length
+      ? autoFillLineup(players, formation, style)
+      : rawLineup
+
   // Rebuild a missing/empty bench from the pool so the Squad screen is populated.
+  let bench: string[] = Array.isArray(c.bench) ? c.bench.filter((id: string) => validIds.has(id)) : []
   if (bench.length === 0 && players.length > 0) {
     bench = autoFillBench(players, lineup, style)
   }

@@ -13,6 +13,13 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // TEMPORARY: self-destroying service worker. Previous SW builds got stuck
+      // serving stale code on installed PWAs, and clearing browser data doesn't
+      // remove an installed SW — so updates never reached the user. A
+      // self-destroying SW makes every browser unregister the old worker and
+      // clear its caches, guaranteeing fresh code from the network. Offline
+      // support is off for now; a robust offline layer returns before release.
+      selfDestroying: true,
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
