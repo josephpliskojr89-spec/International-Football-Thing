@@ -166,6 +166,7 @@
   touch-action: none;
 }
 .slot__token {
+  position: relative;
   width: 46px;
   height: 46px;
   border-radius: 50%;
@@ -476,4 +477,38 @@
 .deadline-open {
   color: var(--good);
   font-weight: 800;
+}
+
+/* feed action button */
+.newsaction {
+  margin-top: 10px;
+  width: 100%;
+  background: var(--card-2);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-weight: 800;
+  padding: 11px;
+}
+.newsaction:disabled {
+  border-color: var(--line);
+  color: var(--text-faint);
+}
+
+/* selected (called-up) row highlight in the pool */
+.prow--selected {
+  border-color: var(--good);
+  box-shadow: inset 3px 0 0 var(--good);
+}
+
+/* star marker for top-rated players */
+.star-top {
+  color: var(--gold);
+  font-size: 12px;
+}
+.slot__star {
+  position: absolute;
+  top: -6px;
+  right: 6px;
+  font-size: 14px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
 }

@@ -1,10 +1,18 @@
 import type { Player } from '@/engine/types'
 import { displayOverall, displayPotential, formColor, positionColor, freshnessColor } from '../display'
 
-export function PlayerRow({ p, onClick }: { p: Player; onClick?: () => void }) {
+export function PlayerRow({
+  p,
+  onClick,
+  selected,
+}: {
+  p: Player
+  onClick?: () => void
+  selected?: boolean
+}) {
   const pot = displayPotential(p)
   return (
-    <button className="prow" onClick={onClick}>
+    <button className={`prow ${selected ? 'prow--selected' : ''}`} onClick={onClick}>
       <span className="prow__pos" style={{ background: positionColor(p.position) }}>
         {p.position}
       </span>

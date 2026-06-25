@@ -12,11 +12,13 @@ export function FormationPitch({
   lineup,
   playersById,
   onSwap,
+  starIds,
 }: {
   formationId: string
   lineup: Record<string, string | null>
   playersById: Record<string, Player>
   onSwap: (slotA: string, slotB: string) => void
+  starIds?: Set<string>
 }) {
   const formation = FORMATIONS_BY_ID[formationId]
   const pitchRef = useRef<HTMLDivElement>(null)
@@ -117,6 +119,7 @@ export function FormationPitch({
               className={`slot__token ${player ? '' : 'slot__token--empty'}`}
               style={player ? { background: positionColor(player.position) } : undefined}
             >
+              {player && starIds?.has(player.id) && <span className="slot__star">★</span>}
               {player ? displayOverallShort(player) : slot.position}
             </div>
             <div className="slot__name">{player ? lastName(player.name) : slot.id}</div>

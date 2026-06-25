@@ -96,6 +96,8 @@ export interface NewsItem {
   type: string
   text: string
   magnitude: number
+  subjectId?: string // player this item is about (for actions)
+  action?: 'SEND_SCOUT' // optional tappable action in the feed
 }
 
 export interface Career {

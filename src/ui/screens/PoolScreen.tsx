@@ -19,10 +19,11 @@ export function PoolScreen() {
     () => [...career.players].sort((a, b) => b.knownOverall - a.knownOverall),
     [career.players],
   )
+  const selected = useMemo(() => new Set(career.registeredSquad), [career.registeredSquad])
 
   return (
     <div className="screen">
-      <InCareerHeader title="Player Pool" sub={`${career.players.length} players`} />
+      <InCareerHeader title="Player Pool" sub={`${career.players.length} players · ${career.registeredSquad.length} called up`} />
 
       <div style={{ padding: '0 var(--pad)' }}>
         <div className="segmented">
@@ -44,7 +45,7 @@ export function PoolScreen() {
                 <div className="sectionhdr">{g.label}</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {list.map((p) => (
-                    <PlayerRow key={p.id} p={p} />
+                    <PlayerRow key={p.id} p={p} selected={selected.has(p.id)} />
                   ))}
                 </div>
               </div>
@@ -55,7 +56,7 @@ export function PoolScreen() {
             {sorted
               .filter((p: Player) => p.position === filter)
               .map((p) => (
-                <PlayerRow key={p.id} p={p} />
+                <PlayerRow key={p.id} p={p} selected={selected.has(p.id)} />
               ))}
           </div>
         )}

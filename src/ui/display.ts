@@ -89,6 +89,19 @@ export function positionColor(position: Player['position']): string {
   }
 }
 
+// The ids of the top-N players (by scouted rating) among a given id set — used
+// to star a squad's best players in the squad/formation views.
+export function topRatedIds(players: Player[], ids: string[], n: number): Set<string> {
+  const set = new Set(ids)
+  return new Set(
+    players
+      .filter((p) => set.has(p.id))
+      .sort((a, b) => b.knownOverall - a.knownOverall)
+      .slice(0, n)
+      .map((p) => p.id),
+  )
+}
+
 // Star rating from a 0..99 scale, for potential bands (shown only when known).
 export function starString(value: number): string {
   const stars = Math.max(0.5, Math.min(5, Math.round((value / 99) * 10) / 2))

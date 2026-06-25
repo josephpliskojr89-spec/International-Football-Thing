@@ -9,7 +9,10 @@ export function ScheduleScreen() {
   const career = useGame((s) => s.career)!
   const advanceWeek = useGame((s) => s.advanceWeek)
   const go = useGame((s) => s.go)
+  const sendScout = useGame((s) => s.sendScout)
   const [menuOpen, setMenuOpen] = useState(false)
+
+  const scoutsLeft = career.coaches.filter((c) => !c.targetedLookUsed).length
 
   const nation = NATIONS_BY_ID[career.managerNationId]
 
@@ -101,6 +104,15 @@ export function ScheduleScreen() {
               Yr{item.year} · Wk{item.week} · {item.type.replace(/_/g, ' ')}
             </div>
             <div className="newscard__text">{item.text}</div>
+            {item.action === 'SEND_SCOUT' && item.subjectId && (
+              <button
+                className="btn newsaction"
+                disabled={scoutsLeft === 0}
+                onClick={() => sendScout(item.id, item.subjectId!)}
+              >
+                {scoutsLeft === 0 ? '🔍 No scouts available' : `🔍 Send a scout (${scoutsLeft} left)`}
+              </button>
+            )}
           </div>
         ))}
       </div>

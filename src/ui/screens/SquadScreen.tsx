@@ -4,7 +4,7 @@ import { FORMATIONS, FORMATIONS_BY_ID, roleLabel } from '@/data/formations'
 import type { Player } from '@/engine/types'
 import { InCareerHeader } from '../components/InCareerHeader'
 import { FormationPitch } from '../components/FormationPitch'
-import { displayOverall, displayPotential, formColor, freshnessColor, positionColor } from '../display'
+import { displayOverall, displayPotential, formColor, freshnessColor, positionColor, topRatedIds } from '../display'
 
 type Tab = 'squad' | 'pitch'
 
@@ -18,6 +18,11 @@ export function SquadScreen() {
   const playersById = useMemo(
     () => Object.fromEntries(career.players.map((p) => [p.id, p])),
     [career.players],
+  )
+  // Star the three best players in the registered squad.
+  const stars = useMemo(
+    () => topRatedIds(career.players, career.registeredSquad, 3),
+    [career.players, career.registeredSquad],
   )
 
   const formation = FORMATIONS_BY_ID[career.formation]
@@ -60,7 +65,7 @@ export function SquadScreen() {
             <div className="sectionhdr">Starting XI</div>
             {formation.slots.map((slot) => {
               const p = playersById[career.lineup[slot.id] ?? '']
-              return <SquadRow key={slot.id} role={roleLabel(slot.id)} player={p} />
+              return <SquadRow key={slot.id} role={roleLabel(slot.id)} player={p} star={!!p && stars.has(p.id)} />
             })}
 
             <div className="sectionhdr">Substitutes</div>
@@ -68,7 +73,7 @@ export function SquadScreen() {
               .map((id) => playersById[id])
               .filter(Boolean)
               .map((p) => (
-                <SquadRow key={p.id} role={p.position} player={p} />
+                <SquadRow key={p.id} role={p.position} player={p} star={stars.has(p.id)} />
               ))}
 
             <button className="btn btn--ghost btn--block" style={{ marginTop: 8 }} onClick={() => go('squad-select')}>
@@ -84,6 +89,7 @@ export function SquadScreen() {
               formationId={career.formation}
               lineup={career.lineup}
               playersById={playersById}
+              starIds={stars}
               onSwap={swapLineupSlots}
             />
             <div className="faint center" style={{ fontSize: 13 }}>
@@ -97,7 +103,7 @@ export function SquadScreen() {
 }
 
 // A squad list row: a fixed role chip on the left, the player on the right.
-function SquadRow({ role, player }: { role: string; player: Player | undefined }) {
+function SquadRow({ role, player, star }: { role: string; player: Player | undefined; star?: boolean }) {
   if (!player) {
     return (
       <div className="prow" style={{ cursor: 'default', opacity: 0.6 }}>
@@ -117,7 +123,10 @@ function SquadRow({ role, player }: { role: string; player: Player | undefined }
         {role}
       </span>
       <span className="prow__main">
-        <span className="prow__name">{player.name}</span>
+        <span className="prow__name">
+          {star && <span className="star-top">★ </span>}
+          {player.name}
+        </span>
         <span className="prow__sub">
           {player.age} · {player.club}
           {pot !== '?' && <span style={{ color: 'var(--gold)' }}> · {pot}</span>}

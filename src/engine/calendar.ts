@@ -74,31 +74,37 @@ export function advanceWeek(career: Career): Career {
     year,
     season,
     players,
-    coaches: career.coaches.map((c) => ({ ...c, targetedLookUsed: false })),
+    // Targeted looks persist across weeks; they refresh per inter-window period
+    // (reset when a window match is played), not every week.
+    coaches: career.coaches,
     news: [...news, ...career.news].slice(0, 80),
   }
 }
 
 // Hype is driven by a player's REAL hidden ability, but never reveals the
 // number — it's the world telling you to go and look. Capped to avoid a
-// firehose. The actionable "send a scout" lands with the discovery milestone.
+// firehose. Carries a tappable "send a scout" action when he isn't already a
+// sharp read in your pool.
 function hypeNews(players: Player[], career: Career, year: number, week: number, rng: RNG): NewsItem[] {
-  const candidates = players.filter((p) => p.age <= 21 && p.potential >= 78)
+  // Hype is form-driven, so a hot mediocre teenager (a flat-track bully) can get
+  // hyped alongside genuine gems — that's exactly what scouting separates.
+  const candidates = players.filter((p) => p.age <= 21 && p.form >= 70 && p.potential >= 68)
   const out: NewsItem[] = []
   for (const p of candidates) {
-    // higher potential + good form -> more likely to flash promise this week
-    const chance = 0.015 + (p.potential - 78) * 0.002 + (p.form - 60) * 0.0008
+    const chance = 0.01 + (p.form - 70) * 0.0016 + (p.potential - 68) * 0.0006
     if (rng.next() < chance) {
-      out.push(
-        mkNews(
-          `hype-${p.id}-${career.season}-${week}`,
-          year,
-          week,
-          'WONDERKID_EMERGING',
-          0.85,
-          rng.pick(HYPE_TEMPLATES).replace('{player}', p.name).replace('{age}', String(p.age)).replace('{club}', p.club).replace('{league}', p.clubLeague),
-        ),
+      const item = mkNews(
+        `hype-${p.id}-${career.season}-${week}`,
+        year,
+        week,
+        'WONDERKID_EMERGING',
+        0.85,
+        rng.pick(HYPE_TEMPLATES).replace('{player}', p.name).replace('{age}', String(p.age)).replace('{club}', p.club).replace('{league}', p.clubLeague),
       )
+      item.subjectId = p.id
+      // Offer a scout look unless you already have a sharp read on him.
+      if (p.freshness < 70 && p.inPersonOverall === null) item.action = 'SEND_SCOUT'
+      out.push(item)
       if (out.length >= 1) break // at most one wonderkid hype per week
     }
   }

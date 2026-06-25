@@ -1,10 +1,10 @@
 import { create } from 'zustand'
-import type { Career, Player, PlayStyle } from '@/engine/types'
+import type { Career, NewsItem, Player, PlayStyle } from '@/engine/types'
 import { createCareer, autoFillLineup, type NewCareerInput } from '@/engine/career'
 import { advanceWeek as advanceWeekEngine } from '@/engine/calendar'
 import { simulateMatch, type MatchResult } from '@/engine/match'
 import { buildManagerTeam, buildOpponentTeam, matchSeed } from '@/engine/matchSetup'
-import { seeInPerson } from '@/engine/scouting'
+import { seeInPerson, targetedLook } from '@/engine/scouting'
 import { fixtureFor, isSquadLocked } from '@/engine/fixtures'
 import { NATIONS_BY_ID } from '@/data/nations'
 import { windowAtWeek, fixtureKey } from '@/data/windows'
@@ -46,6 +46,7 @@ interface GameState {
   setSquad: (ids: string[]) => void
   playScheduledMatch: (style: PlayStyle) => MatchResult | null
   assignCoach: (coachId: string, league: string | null) => void
+  sendScout: (newsId: string, playerId: string) => boolean
 }
 
 // Debounced autosave so rapid taps don't thrash IndexedDB.
@@ -196,13 +197,57 @@ export const useGame = create<GameState>((set, get) => ({
       ...career,
       players,
       playedFixtures: [...career.playedFixtures, key],
+      // A new inter-window period begins: each coach's targeted look refreshes.
+      coaches: career.coaches.map((c) => ({ ...c, targetedLookUsed: false })),
       news: [headline, ...career.news].slice(0, 60),
     }
     set({ career: next })
     scheduleSave(next)
     return result
   },
+
+  sendScout: (newsId, playerId) => {
+    const { career } = get()
+    if (!career) return false
+    const coachIdx = career.coaches.findIndex((c) => !c.targetedLookUsed)
+    if (coachIdx < 0) return false // no targeted looks left this period
+
+    const coaches = career.coaches.map((c, i) => (i === coachIdx ? { ...c, targetedLookUsed: true } : c))
+    let scouted: Player | null = null
+    const players = career.players.map((p) => {
+      if (p.id !== playerId) return p
+      scouted = targetedLook(p)
+      return scouted
+    })
+    if (!scouted) return false
+
+    const report = scoutReport(scouted, career.year, career.week)
+    const news = [report, ...career.news.map((n) => (n.id === newsId ? { ...n, action: undefined } : n))].slice(0, 80)
+    const next: Career = { ...career, coaches, players, news }
+    set({ career: next })
+    scheduleSave(next)
+    return true
+  },
 }))
+
+// A scout's verdict after a targeted look — confirmation or bust, keyed off the
+// now-revealed potential (the player object passed in is already scouted).
+function scoutReport(p: Player, year: number, week: number): NewsItem {
+  let verdict: string
+  if (p.potential >= 88) verdict = `${p.name} is the real deal — a generational ceiling. Lock him down before anyone else does.`
+  else if (p.potential >= 80) verdict = `${p.name} has genuine top-team potential. Well worth tracking.`
+  else if (p.potential >= 72) verdict = `${p.name} is a tidy player, but not the superstar the hype suggested.`
+  else verdict = `${p.name} is a flat-track bully — the hype has outrun the talent. One for depth at best.`
+  return {
+    id: `scout-${p.id}-${year}-${week}-${p.potential}`,
+    year,
+    week,
+    type: 'SCOUT_REPORT',
+    magnitude: 0.6,
+    subjectId: p.id,
+    text: `Scout report: ${verdict}`,
+  }
+}
 
 function matchHeadline(
   result: MatchResult,
