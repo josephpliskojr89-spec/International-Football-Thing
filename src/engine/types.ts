@@ -114,9 +114,11 @@ export interface Career {
 
   players: Player[] // the manager nation's full eligible pool
   coaches: Coach[]
+  registeredSquad: string[] // the called-up 26 (XI + subs) for the window
   lineup: Record<string, string | null> // formation slot id -> player id (the XI)
-  bench: string[] // player ids on the bench (rest of the matchday squad)
+  bench: string[] // registered squad players not in the XI (the subs)
   formation: string
+  playedFixtures: string[] // fixtureKey()s already played, to avoid replays
 
   news: NewsItem[]
 }

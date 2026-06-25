@@ -449,3 +449,31 @@
   background: linear-gradient(135deg, var(--pitch), #15683a);
   border: 1px solid #0d3d20;
 }
+
+/* squad-selection check toggle */
+.selcheck {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 900;
+  color: #07111f;
+  flex: 0 0 auto;
+}
+
+/* window / deadline card on the schedule */
+.windowcard {
+  background: linear-gradient(135deg, #243056, var(--card));
+  border: 1px solid var(--line);
+}
+.deadline-locked {
+  color: var(--bad);
+  font-weight: 800;
+}
+.deadline-open {
+  color: var(--good);
+  font-weight: 800;
+}

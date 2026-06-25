@@ -33,6 +33,15 @@ export function migrateCareer(raw: unknown): Career {
     bench = autoFillBench(players, lineup, style)
   }
 
+  // The registered 26 = XI + bench (deduped, valid ids only).
+  const xiIds = Object.values(lineup).filter(Boolean) as string[]
+  let registeredSquad: string[] = Array.isArray(c.registeredSquad)
+    ? c.registeredSquad.filter((id: string) => validIds.has(id))
+    : []
+  if (registeredSquad.length === 0) {
+    registeredSquad = [...new Set([...xiIds, ...bench])]
+  }
+
   return {
     seed: c.seed ?? 1,
     createdAt: c.createdAt ?? 0,
@@ -46,9 +55,11 @@ export function migrateCareer(raw: unknown): Career {
     exhibitionCount: c.exhibitionCount ?? 0,
     players,
     coaches: Array.isArray(c.coaches) ? c.coaches : [],
+    registeredSquad,
     lineup,
     bench,
     formation,
+    playedFixtures: Array.isArray(c.playedFixtures) ? c.playedFixtures : [],
     news: Array.isArray(c.news) ? c.news : [],
   }
 }

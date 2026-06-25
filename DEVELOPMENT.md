@@ -80,11 +80,28 @@ fuzziness surfaces. Never render hidden values (potential, leans, injuryRisk) ra
   the number) — discovery happens through feed + coverage, nothing hand-placed.
 - Fixes the earlier match-balance caveat: squads now have proper spread.
 
+### Milestone 3 — squad selection + international calendar (done)
+- Window calendar (`data/windows.ts`): five international windows a year, each
+  with a match week and a registration deadline the week before.
+- 26-man squad registration (`engine/fixtures.ts`): pick your 26 from the full
+  pool with position minimums (3 GK / 7 DF / 7 MF / 3 FW), live validity.
+- Registration DEADLINE: the 26 lock the week before a window through its match;
+  rolls to the next window (and reopens) once the match is played.
+- Squad Selection screen (tap to call up / drop, lock-aware). Schedule hub shows
+  the next window, opponent, venue, deadline countdown / lock, and a Select
+  Squad button; the match week swaps Advance Week for Play Match.
+- Match screen plays the scheduled window fixture (deterministic opponent +
+  venue); the registered 26 all get exact in-person reads afterward.
+
+NOTE: window opponents are friendlies for now; real qualifying groups /
+tournaments / tables replace the opponent pick in the tournament milestone (the
+window + deadline machinery stays).
+
 ### Not yet built (next milestones)
-1. Discovery polish: actionable "send a scout" from a hype headline (targeted
-   look wired to the feed), confirmation/bust outcomes.
-2. Real calendar fixtures, qualifying formats, tournaments, rankings/seeding
-   (wires Tier 1/2/3 into actual scheduled windows).
+1. Tournament structure: qualifying groups/formats per confederation, tables,
+   continental + World Cup, rankings/seeding (replaces friendly opponents).
+2. Discovery polish: actionable "send a scout" from a hype headline.
 3. Eligibility/persuasion (leans, courting, rival-AI clock) + actionable feed.
 4. Template-driven News engine (events → priority → feed mix).
-5. Manager progression (move nations, get sacked, skills) — deferred per design.
+5. Offline service worker re-enabled (network-first) before release.
+6. Manager progression (move nations, get sacked, skills) — deferred per design.

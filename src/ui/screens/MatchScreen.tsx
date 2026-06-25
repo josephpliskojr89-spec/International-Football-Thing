@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useGame } from '@/state/store'
-import { NATIONS, NATIONS_BY_ID } from '@/data/nations'
+import { NATIONS_BY_ID } from '@/data/nations'
+import { windowAtWeek } from '@/data/windows'
+import { fixtureFor } from '@/engine/fixtures'
 import { defaultStyleForApproach } from '@/engine/matchSetup'
 import type { PlayStyle } from '@/engine/types'
 import type { MatchResult } from '@/engine/match'
@@ -10,61 +12,68 @@ const STYLES: PlayStyle[] = ['Balanced', 'Possession', 'Counter', 'Direct', 'Hig
 export function MatchScreen() {
   const career = useGame((s) => s.career)!
   const go = useGame((s) => s.go)
-  const playExhibition = useGame((s) => s.playExhibition)
+  const playScheduledMatch = useGame((s) => s.playScheduledMatch)
 
-  const opponents = useMemo(
-    () => NATIONS.filter((n) => n.id !== career.managerNationId).sort((a, b) => b.nationRating - a.nationRating),
-    [career.managerNationId],
+  const window = windowAtWeek(career.week)
+  const fixture = useMemo(
+    () => (window ? fixtureFor(career, window, career.season) : null),
+    [career, window],
   )
 
-  const [opponentId, setOpponentId] = useState<string | null>(null)
   const [style, setStyle] = useState<PlayStyle>(defaultStyleForApproach(career.style.approach))
-  const [home, setHome] = useState(true)
   const [result, setResult] = useState<MatchResult | null>(null)
 
-  const kickOff = () => {
-    if (!opponentId) return
-    setResult(playExhibition(opponentId, style, home))
+  if (!window || !fixture) {
+    return (
+      <div className="screen">
+        <div className="topbar">
+          <button className="iconbtn" onClick={() => go('schedule')}>
+            ‹
+          </button>
+          <div className="topbar__title">No match</div>
+        </div>
+        <div className="screen__body">
+          <div className="card center muted">There's no scheduled match this week.</div>
+        </div>
+      </div>
+    )
   }
+
+  const isHome = fixture.home
+  const me = NATIONS_BY_ID[career.managerNationId]
+  const opp = NATIONS_BY_ID[fixture.opponentId]
 
   if (result) {
-    return <MatchResultView result={result} managerIsHome={home} onDone={() => go('schedule')} />
+    return <MatchResultView result={result} managerIsHome={isHome} onDone={() => go('schedule')} />
   }
 
-  const me = NATIONS_BY_ID[career.managerNationId]
+  const kickOff = () => setResult(playScheduledMatch(style))
 
   return (
     <div className="screen">
       <div className="topbar">
-        <button className="iconbtn" onClick={() => go('schedule')} aria-label="Back">
+        <button className="iconbtn" onClick={() => go('schedule')}>
           ‹
         </button>
         <div>
-          <div className="topbar__title">Friendly</div>
-          <div className="topbar__sub">{me.name} · {career.formation}</div>
+          <div className="topbar__title">{window.label}</div>
+          <div className="topbar__sub">{isHome ? 'Home' : 'Away'} · {career.formation}</div>
         </div>
       </div>
 
       <div className="screen__body">
-        <div className="sectionhdr">Opponent</div>
-        <div className="nation-grid">
-          {opponents.map((n) => (
-            <button
-              key={n.id}
-              className={`nation-card ${opponentId === n.id ? 'on' : ''}`}
-              onClick={() => setOpponentId(n.id)}
-            >
-              <div className="nation-card__name">{n.name}</div>
-              <div className="nation-card__sub">
-                Rating {n.nationRating} · {n.tacticalIdentity}
-              </div>
-            </button>
-          ))}
+        <div className="card center" style={{ padding: 18 }}>
+          <div className="muted" style={{ fontSize: 12, letterSpacing: 1 }}>FIXTURE</div>
+          <div style={{ fontSize: 22, fontWeight: 900, margin: '6px 0' }}>
+            {isHome ? me.name : opp.name} v {isHome ? opp.name : me.name}
+          </div>
+          <div className="muted" style={{ fontSize: 13 }}>
+            Friendly · {opp.name} ({opp.nationRating}) play {opp.tacticalIdentity}
+          </div>
         </div>
 
-        <div className="sectionhdr">Your match plan</div>
         <div className="card">
-          <div className="field-label">Style</div>
+          <div className="field-label">Your match plan</div>
           <div className="chiprow">
             {STYLES.map((s) => (
               <button key={s} className={`chip ${style === s ? 'chip--on' : ''}`} onClick={() => setStyle(s)}>
@@ -72,25 +81,14 @@ export function MatchScreen() {
               </button>
             ))}
           </div>
-          <div className="field-label" style={{ marginTop: 12 }}>
-            Venue
-          </div>
-          <div className="segmented">
-            <button className={home ? 'on' : ''} onClick={() => setHome(true)}>
-              Home
-            </button>
-            <button className={!home ? 'on' : ''} onClick={() => setHome(false)}>
-              Away
-            </button>
-          </div>
           <div className="faint" style={{ fontSize: 13, marginTop: 10 }}>
-            Selecting your XI? Edit it on the Squad screen — this match uses your current lineup.
+            Your registered squad and XI are set. Adjust the XI on the Squad screen.
           </div>
         </div>
       </div>
 
       <div style={{ padding: 'var(--pad)' }}>
-        <button className="btn btn--primary btn--lg btn--block" disabled={!opponentId} onClick={kickOff}>
+        <button className="btn btn--primary btn--lg btn--block" onClick={kickOff}>
           Kick Off ›
         </button>
       </div>
@@ -129,7 +127,6 @@ function MatchResultView({
             </div>
             <div className="scoreline__team">{result.awayName}</div>
           </div>
-
           <div className="scorers">
             <div className="scorers__col">
               {result.scorersHome.map((s, i) => (
@@ -170,7 +167,9 @@ function MatchResultView({
         )}
 
         <details className="card">
-          <summary style={{ fontWeight: 700 }}>Player ratings — {managerIsHome ? result.homeName : result.awayName}</summary>
+          <summary style={{ fontWeight: 700 }}>
+            Player ratings — {managerIsHome ? result.homeName : result.awayName}
+          </summary>
           <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
             {(managerIsHome ? result.ratingsHome : result.ratingsAway).map((r) => (
               <div key={r.playerId} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>

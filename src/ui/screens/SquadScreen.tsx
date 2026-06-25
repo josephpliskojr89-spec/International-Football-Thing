@@ -12,6 +12,7 @@ export function SquadScreen() {
   const career = useGame((s) => s.career)!
   const setFormation = useGame((s) => s.setFormation)
   const swapLineupSlots = useGame((s) => s.swapLineupSlots)
+  const go = useGame((s) => s.go)
   const [tab, setTab] = useState<Tab>('squad')
 
   const playersById = useMemo(
@@ -70,8 +71,11 @@ export function SquadScreen() {
                 <SquadRow key={p.id} role={p.position} player={p} />
               ))}
 
+            <button className="btn btn--ghost btn--block" style={{ marginTop: 8 }} onClick={() => go('squad-select')}>
+              Manage 26-man Squad
+            </button>
             <div className="faint center" style={{ fontSize: 12, marginTop: 6 }}>
-              Edit your XI on the Formation tab. Full window squad selection is coming.
+              Edit your XI on the Formation tab; choose your 26 with Manage Squad.
             </div>
           </>
         ) : (

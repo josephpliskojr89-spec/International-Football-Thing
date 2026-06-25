@@ -21,6 +21,7 @@ export function createCareer(input: NewCareerInput): Career {
   const formation = input.style.formation
   const lineup = autoFillLineup(players, formation, input.style)
   const bench = autoFillBench(players, lineup, input.style)
+  const registeredSquad = [...(Object.values(lineup).filter(Boolean) as string[]), ...bench]
   const coaches = makeCoaches(seed)
 
   return {
@@ -36,9 +37,11 @@ export function createCareer(input: NewCareerInput): Career {
     exhibitionCount: 0,
     players,
     coaches,
+    registeredSquad,
     lineup,
     bench,
     formation,
+    playedFixtures: [],
     news: [
       {
         id: 'welcome',
@@ -75,32 +78,49 @@ export function autoFillLineup(
   return lineup
 }
 
-const BENCH_SIZE = 12 // XI + 12 = a 23-man matchday squad (full window squad later)
+const BENCH_SIZE = 15 // XI + 15 = a 26-man window squad
+// Target composition of the full 26 (must satisfy the squad minimums).
+const SQUAD_TARGETS: Record<Player['position'], number> = { GK: 3, DF: 9, MF: 9, FW: 5 }
 
-// Auto-pick the bench: a sensible spread of the next-best players not in the XI
-// (at least one keeper, then best remaining outfield by ability).
+// Auto-pick the bench so the full 26 has a sensible, valid positional spread
+// (3 keepers, etc.): fill each position up to its target with the best
+// available, then top up any remaining slots with the best of the rest.
 export function autoFillBench(
   players: Player[],
   lineup: Record<string, string | null>,
   style: ManagerStyle,
 ): string[] {
   const inXI = new Set(Object.values(lineup).filter(Boolean) as string[])
-  const available = players.filter((p) => !inXI.has(p.id))
-  const byPos = (pos: Player['position']) =>
-    available
-      .filter((p) => p.position === pos)
-      .sort((a, b) => slotScore(b, b.position, style) - slotScore(a, a.position, style))
+  const xiPlayers = players.filter((p) => inXI.has(p.id))
+  const xiCounts = { GK: 0, DF: 0, MF: 0, FW: 0 } as Record<Player['position'], number>
+  for (const p of xiPlayers) xiCounts[p.position]++
 
-  const bench: string[] = []
-  const backupGk = byPos('GK')[0]
-  if (backupGk) bench.push(backupGk.id)
-
-  const rest = available
-    .filter((p) => p.id !== backupGk?.id)
+  const available = players
+    .filter((p) => !inXI.has(p.id))
     .sort((a, b) => slotScore(b, b.position, style) - slotScore(a, a.position, style))
-  for (const p of rest) {
+  const used = new Set<string>()
+  const bench: string[] = []
+
+  const positions: Player['position'][] = ['GK', 'DF', 'MF', 'FW']
+  for (const pos of positions) {
+    const need = Math.max(0, SQUAD_TARGETS[pos] - xiCounts[pos])
+    let added = 0
+    for (const p of available) {
+      if (added >= need || bench.length >= BENCH_SIZE) break
+      if (p.position === pos && !used.has(p.id)) {
+        used.add(p.id)
+        bench.push(p.id)
+        added++
+      }
+    }
+  }
+  // Top up any remaining bench slots with the best players left.
+  for (const p of available) {
     if (bench.length >= BENCH_SIZE) break
-    bench.push(p.id)
+    if (!used.has(p.id)) {
+      used.add(p.id)
+      bench.push(p.id)
+    }
   }
   return bench
 }

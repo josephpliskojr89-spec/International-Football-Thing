@@ -1,12 +1,13 @@
 import { create } from 'zustand'
 import type { Career, Player, PlayStyle } from '@/engine/types'
-import { createCareer, autoFillLineup, autoFillBench, type NewCareerInput } from '@/engine/career'
+import { createCareer, autoFillLineup, type NewCareerInput } from '@/engine/career'
 import { advanceWeek as advanceWeekEngine } from '@/engine/calendar'
 import { simulateMatch, type MatchResult } from '@/engine/match'
 import { buildManagerTeam, buildOpponentTeam, matchSeed } from '@/engine/matchSetup'
 import { seeInPerson } from '@/engine/scouting'
-import { deriveSeed } from '@/engine/rng'
+import { fixtureFor, isSquadLocked } from '@/engine/fixtures'
 import { NATIONS_BY_ID } from '@/data/nations'
+import { windowAtWeek, fixtureKey } from '@/data/windows'
 import { saveCareer, loadCareer, deleteSave } from './persist'
 
 // Top-level navigation. Plain state machine, no router — simpler and more
@@ -23,6 +24,7 @@ export type Route =
   | 'save'
   | 'match'
   | 'scouting'
+  | 'squad-select'
 
 interface GameState {
   route: Route
@@ -41,7 +43,8 @@ interface GameState {
   saveNow: () => Promise<void>
   abandonCareer: () => Promise<void>
 
-  playExhibition: (opponentId: string, style: PlayStyle, isHome: boolean) => MatchResult
+  setSquad: (ids: string[]) => void
+  playScheduledMatch: (style: PlayStyle) => MatchResult | null
   assignCoach: (coachId: string, league: string | null) => void
 }
 
@@ -92,8 +95,11 @@ export const useGame = create<GameState>((set, get) => ({
   setFormation: (formationId) => {
     const { career } = get()
     if (!career) return
-    const lineup = autoFillLineup(career.players, formationId, career.style)
-    const bench = autoFillBench(career.players, lineup, career.style)
+    // Fill the XI from the registered 26 only; bench = the squad minus the XI.
+    const squadPlayers = career.players.filter((p) => career.registeredSquad.includes(p.id))
+    const lineup = autoFillLineup(squadPlayers, formationId, career.style)
+    const xiIds = Object.values(lineup).filter(Boolean) as string[]
+    const bench = career.registeredSquad.filter((id) => !xiIds.includes(id))
     const next = { ...career, formation: formationId, lineup, bench }
     set({ career: next })
     scheduleSave(next)
@@ -138,30 +144,45 @@ export const useGame = create<GameState>((set, get) => ({
     scheduleSave(next)
   },
 
-  playExhibition: (opponentId, style, isHome) => {
+  setSquad: (ids) => {
     const { career } = get()
-    if (!career) throw new Error('no career')
-    const opponent = NATIONS_BY_ID[opponentId]
+    if (!career) return
+    if (isSquadLocked(career)) return // registration deadline passed
+    const dedup = [...new Set(ids)]
+    const squadPlayers = career.players.filter((p) => dedup.includes(p.id))
+    const lineup = autoFillLineup(squadPlayers, career.formation, career.style)
+    const xiIds = Object.values(lineup).filter(Boolean) as string[]
+    const bench = dedup.filter((id) => !xiIds.includes(id))
+    const next = { ...career, registeredSquad: dedup, lineup, bench }
+    set({ career: next })
+    scheduleSave(next)
+  },
+
+  playScheduledMatch: (style) => {
+    const { career } = get()
+    if (!career) return null
+    const window = windowAtWeek(career.week)
+    if (!window) return null
+    const key = fixtureKey(career.season, window.id)
+    if (career.playedFixtures.includes(key)) return null // already played this window
+
+    const fixture = fixtureFor(career, window, career.season)
+    const opponent = NATIONS_BY_ID[fixture.opponentId]
+    const isHome = fixture.home
 
     const managerTeam = buildManagerTeam(career, style, isHome)
     const opponentTeam = buildOpponentTeam(opponent, career.seed, !isHome)
     const home = isHome ? managerTeam : opponentTeam
     const away = isHome ? opponentTeam : managerTeam
-    // Mix in a per-friendly counter so replaying the same fixture this week
-    // rolls a fresh result instead of reproducing the previous one. Scheduled
-    // competitive fixtures (later) will stay seed-stable for save/reload.
-    const count = career.exhibitionCount ?? 0 // tolerate pre-Milestone-1 saves
-    const seed = deriveSeed(matchSeed(career.seed, career.year, career.week, opponentId), count)
+    // Scheduled fixtures are seed-stable (reproducible on save/reload).
+    const seed = matchSeed(career.seed, career.season, career.week, fixture.opponentId)
     const result = simulateMatch(home, away, seed)
 
-    // The whole called-up squad (XI + bench) was seen in person this window, so
-    // they all get an exact read; those who featured also get a form nudge.
+    // The whole registered 26 was in camp this window: exact reads for all, form
+    // nudge for those who featured.
     const ratings = isHome ? result.ratingsHome : result.ratingsAway
     const ratingById = new Map(ratings.map((r) => [r.playerId, r.rating]))
-    const squad = new Set<string>([
-      ...(Object.values(career.lineup).filter(Boolean) as string[]),
-      ...career.bench,
-    ])
+    const squad = new Set<string>(career.registeredSquad)
     const players: Player[] = career.players.map((p) => {
       if (!squad.has(p.id)) return p
       const r = ratingById.get(p.id)
@@ -170,11 +191,11 @@ export const useGame = create<GameState>((set, get) => ({
       return seeInPerson(formed)
     })
 
-    const headline = matchHeadline(result, isHome, career.year, career.week, count)
+    const headline = matchHeadline(result, isHome, career.year, career.week, 0)
     const next: Career = {
       ...career,
       players,
-      exhibitionCount: count + 1,
+      playedFixtures: [...career.playedFixtures, key],
       news: [headline, ...career.news].slice(0, 60),
     }
     set({ career: next })
