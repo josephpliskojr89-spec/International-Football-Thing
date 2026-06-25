@@ -512,3 +512,34 @@
   font-size: 14px;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
 }
+
+/* ---- standings table ---- */
+.standrow {
+  display: grid;
+  grid-template-columns: 30px 1fr 22px 22px 22px 22px 30px 32px;
+  align-items: center;
+  gap: 2px;
+  padding: 9px 10px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid var(--line);
+}
+.standrow:last-child { border-bottom: none; }
+.standrow--head {
+  color: var(--text-faint);
+  font-weight: 800;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.standrow--me {
+  background: var(--card-2);
+  font-weight: 800;
+}
+.stand__pos { display: flex; align-items: center; gap: 5px; color: var(--text-dim); }
+.stand__team { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stand__num { text-align: center; }
+.stand__pts { font-weight: 800; }
+.stand__dot {
+  width: 6px; height: 16px; border-radius: 3px; background: var(--line); display: inline-block;
+}
+.stand__dot.q { background: var(--good); }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useGame } from '@/state/store'
-import { NATIONS_BY_ID } from '@/data/nations'
+import { ALL_NATIONS_BY_ID, NATIONS_BY_ID } from '@/data/nations'
 import { windowAtWeek, fixtureKey } from '@/data/windows'
 import { effectiveUpcoming } from '@/engine/fixtures'
 import { MenuSheet } from '../components/MenuSheet'
@@ -24,7 +24,7 @@ export function ScheduleScreen() {
   // The upcoming window (for the next-window card + deadline), accounting for a
   // match already played this week.
   const upcoming = effectiveUpcoming(career)
-  const upOpp = NATIONS_BY_ID[upcoming.fixture.opponentId]
+  const upOpp = upcoming.fixture ? ALL_NATIONS_BY_ID[upcoming.fixture.opponentId] : null
   const locked = upcoming.locked
   const weeksToDeadline = upcoming.nextYear
     ? null
@@ -65,10 +65,12 @@ export function ScheduleScreen() {
           </button>
         ) : (
           <div className="card windowcard">
-            <div className="muted" style={{ fontSize: 12, letterSpacing: 1 }}>NEXT WINDOW</div>
-            <div style={{ fontWeight: 800, fontSize: 17, marginTop: 4 }}>{upcoming.window.label}</div>
+            <div className="muted" style={{ fontSize: 12, letterSpacing: 1 }}>NEXT QUALIFIER · {upcoming.window.label}</div>
+            <div style={{ fontWeight: 800, fontSize: 17, marginTop: 4 }}>
+              {upOpp ? `vs ${upOpp.name}` : 'Qualifying'}
+            </div>
             <div className="muted" style={{ fontSize: 13 }}>
-              vs {upOpp.name} · {upcoming.fixture.home ? 'Home' : 'Away'} · in {upcoming.weeksAway} week
+              {upcoming.fixture ? `${upcoming.fixture.home ? 'Home' : 'Away'} · ` : ''}in {upcoming.weeksAway} week
               {upcoming.weeksAway === 1 ? '' : 's'}
             </div>
             <div style={{ marginTop: 8, fontSize: 13 }}>
@@ -82,13 +84,18 @@ export function ScheduleScreen() {
                 </span>
               )}
             </div>
-            <button
-              className="btn btn--block"
-              style={{ marginTop: 10, background: locked ? 'var(--card)' : undefined }}
-              onClick={() => go('squad-select')}
-            >
-              {locked ? 'View Locked Squad' : 'Select Squad'}
-            </button>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button
+                className="btn btn--block"
+                style={{ background: locked ? 'var(--card)' : undefined }}
+                onClick={() => go('squad-select')}
+              >
+                {locked ? 'View Squad' : 'Select Squad'}
+              </button>
+              <button className="btn btn--block" onClick={() => go('standings')}>
+                Standings
+              </button>
+            </div>
           </div>
         )}
 

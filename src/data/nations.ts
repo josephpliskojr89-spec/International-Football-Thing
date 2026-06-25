@@ -1,4 +1,5 @@
 import type { Nation } from '@/engine/types'
+import { FILLER_NATIONS } from './fillerNations'
 
 // The 25 playable nations. Confederation labels are generic / trademark-safe
 // (per Tournament Structure bible). Ratings are first-pass tunable values
@@ -71,6 +72,17 @@ function n(
 export const NATIONS_BY_ID: Record<string, Nation> = Object.fromEntries(
   NATIONS.map((nat) => [nat.id, nat]),
 )
+
+// Playable + filler nations — the full world, used for qualifying groups and
+// Tier-2/3 resolution. NATIONS stays the 25 playable (e.g. for new-game pick).
+export const ALL_NATIONS: Nation[] = [...NATIONS, ...FILLER_NATIONS]
+export const ALL_NATIONS_BY_ID: Record<string, Nation> = Object.fromEntries(
+  ALL_NATIONS.map((nat) => [nat.id, nat]),
+)
+
+export function nationsInConfederation(conf: Nation['confederation']): Nation[] {
+  return ALL_NATIONS.filter((n) => n.confederation === conf)
+}
 
 export const CONFEDERATION_NAMES: Record<Nation['confederation'], string> = {
   EFU: 'European Football Union',

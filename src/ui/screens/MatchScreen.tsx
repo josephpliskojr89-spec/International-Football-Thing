@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useGame } from '@/state/store'
-import { NATIONS_BY_ID } from '@/data/nations'
+import { ALL_NATIONS_BY_ID } from '@/data/nations'
 import { windowAtWeek } from '@/data/windows'
-import { fixtureFor } from '@/engine/fixtures'
+import { currentFixture } from '@/engine/fixtures'
 import { STYLE_LABELS } from '@/data/tactics'
 import type { MatchResult } from '@/engine/match'
 
@@ -12,10 +12,7 @@ export function MatchScreen() {
   const playScheduledMatch = useGame((s) => s.playScheduledMatch)
 
   const window = windowAtWeek(career.week)
-  const fixture = useMemo(
-    () => (window ? fixtureFor(career, window, career.season) : null),
-    [career, window],
-  )
+  const fixture = useMemo(() => currentFixture(career), [career])
 
   const focal = career.tactics.focalPointId
     ? career.players.find((p) => p.id === career.tactics.focalPointId)
@@ -39,8 +36,8 @@ export function MatchScreen() {
   }
 
   const isHome = fixture.home
-  const me = NATIONS_BY_ID[career.managerNationId]
-  const opp = NATIONS_BY_ID[fixture.opponentId]
+  const me = ALL_NATIONS_BY_ID[career.managerNationId]
+  const opp = ALL_NATIONS_BY_ID[fixture.opponentId]
 
   if (result) {
     return <MatchResultView result={result} managerIsHome={isHome} onDone={() => go('schedule')} />
@@ -67,7 +64,7 @@ export function MatchScreen() {
             {isHome ? me.name : opp.name} v {isHome ? opp.name : me.name}
           </div>
           <div className="muted" style={{ fontSize: 13 }}>
-            Friendly · {opp.name} ({opp.nationRating}) play {opp.tacticalIdentity}
+            World Cup Qualifier · {opp.name} ({opp.nationRating}) play {opp.tacticalIdentity}
           </div>
         </div>
 

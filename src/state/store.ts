@@ -3,10 +3,12 @@ import type { Career, NewsItem, Player, PlayStyle } from '@/engine/types'
 import { createCareer, autoFillLineup, type NewCareerInput } from '@/engine/career'
 import { advanceWeek as advanceWeekEngine } from '@/engine/calendar'
 import { simulateMatch, type MatchResult } from '@/engine/match'
-import { buildManagerTeam, buildOpponentTeam, matchSeed } from '@/engine/matchSetup'
+import { buildManagerTeam, buildOpponentTeam } from '@/engine/matchSetup'
 import { seeInPerson, targetedLook } from '@/engine/scouting'
-import { fixtureFor, isSquadLocked } from '@/engine/fixtures'
-import { NATIONS_BY_ID } from '@/data/nations'
+import { isSquadLocked } from '@/engine/fixtures'
+import { managerFixture, resolveMatchday, createCampaign } from '@/engine/campaign'
+import { deriveSeed } from '@/engine/rng'
+import { ALL_NATIONS_BY_ID } from '@/data/nations'
 import { windowAtWeek, fixtureKey } from '@/data/windows'
 import { saveCareer, loadCareer, deleteSave } from './persist'
 
@@ -25,6 +27,7 @@ export type Route =
   | 'match'
   | 'scouting'
   | 'squad-select'
+  | 'standings'
 
 interface GameState {
   route: Route
@@ -195,16 +198,17 @@ export const useGame = create<GameState>((set, get) => ({
     const key = fixtureKey(career.season, window.id)
     if (career.playedFixtures.includes(key)) return null // already played this window
 
-    const fixture = fixtureFor(career, window, career.season)
-    const opponent = NATIONS_BY_ID[fixture.opponentId]
-    const isHome = fixture.home
+    const mf = managerFixture(career.campaign, career.managerNationId)
+    if (!mf) return null
+    const opponent = ALL_NATIONS_BY_ID[mf.opponentId]
+    const isHome = mf.home
 
     const managerTeam = buildManagerTeam(career, isHome)
     const opponentTeam = buildOpponentTeam(opponent, career.seed, !isHome)
     const home = isHome ? managerTeam : opponentTeam
     const away = isHome ? opponentTeam : managerTeam
-    // Scheduled fixtures are seed-stable (reproducible on save/reload).
-    const seed = matchSeed(career.seed, career.season, career.week, fixture.opponentId)
+    // Seed-stable per campaign matchday (reproducible on save/reload).
+    const seed = deriveSeed(career.seed, career.campaign.cycle, career.campaign.matchdayIndex, hashStr(opponent.id))
     const result = simulateMatch(home, away, seed)
 
     // The whole registered 26 was in camp this window: exact reads for all, form
@@ -220,14 +224,31 @@ export const useGame = create<GameState>((set, get) => ({
       return seeInPerson(formed)
     })
 
-    const headline = matchHeadline(result, isHome, career.year, career.week, 0)
+    // Resolve the matchday: apply our result, sim the other group fixtures, table.
+    const myId = career.managerNationId
+    const managerResult = {
+      homeId: isHome ? myId : opponent.id,
+      awayId: isHome ? opponent.id : myId,
+      hg: result.homeGoals,
+      ag: result.awayGoals,
+    }
+    let campaign = resolveMatchday(career.campaign, managerResult, myId, career.seed)
+    const extraNews: NewsItem[] = []
+    if (campaign.complete) {
+      extraNews.push(qualificationNews(campaign, myId, career.year, career.week))
+      // Start the next qualifying campaign so the calendar keeps rolling.
+      campaign = createCampaign(myId, career.seed, campaign.cycle + 1)
+    }
+
+    const headline = matchHeadline(result, isHome, career.year, career.week)
     const next: Career = {
       ...career,
       players,
+      campaign,
       playedFixtures: [...career.playedFixtures, key],
       // A new inter-window period begins: each coach's targeted look refreshes.
       coaches: career.coaches.map((c) => ({ ...c, targetedLookUsed: false })),
-      news: [headline, ...career.news].slice(0, 60),
+      news: [headline, ...extraNews, ...career.news].slice(0, 60),
     }
     set({ career: next })
     scheduleSave(next)
@@ -282,8 +303,7 @@ function matchHeadline(
   managerIsHome: boolean,
   year: number,
   week: number,
-  nonce: number,
-): Career['news'][number] {
+): NewsItem {
   const mine = managerIsHome ? result.homeGoals : result.awayGoals
   const theirs = managerIsHome ? result.awayGoals : result.homeGoals
   const verb = mine > theirs ? 'beat' : mine < theirs ? 'lost to' : 'drew with'
@@ -291,11 +311,32 @@ function matchHeadline(
   const oppName = managerIsHome ? result.awayName : result.homeName
   const motm = result.motm ? ` ${result.motm.name} took the plaudits.` : ''
   return {
-    id: `match-${nonce}-${myName}-${oppName}-${result.homeGoals}${result.awayGoals}-${year}${week}`,
+    id: `match-${myName}-${oppName}-${result.homeGoals}${result.awayGoals}-${year}${week}`,
     week,
     year,
-    type: 'FRIENDLY',
+    type: 'QUALIFIER',
     magnitude: 0.6,
-    text: `${myName} ${verb} ${oppName} ${result.homeGoals}–${result.awayGoals} in a friendly.${motm}`,
+    text: `${myName} ${verb} ${oppName} ${result.homeGoals}–${result.awayGoals} in qualifying.${motm}`,
   }
+}
+
+function qualificationNews(campaign: Career['campaign'], myId: string, year: number, week: number): NewsItem {
+  const qualified = campaign.qualifiedIds.includes(myId)
+  const me = ALL_NATIONS_BY_ID[myId]
+  return {
+    id: `qual-${campaign.cycle}-${myId}-${qualified ? 'in' : 'out'}`,
+    week,
+    year,
+    type: qualified ? 'QUALIFIED' : 'ELIMINATED',
+    magnitude: 1,
+    text: qualified
+      ? `${me.name} have QUALIFIED for the World Cup! A campaign to remember — now the real thing begins.`
+      : `Heartbreak: ${me.name} have missed out on World Cup qualification. The rebuild starts now.`,
+  }
+}
+
+function hashStr(s: string): number {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619)
+  return h >>> 0
 }

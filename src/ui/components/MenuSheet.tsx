@@ -9,7 +9,8 @@ interface MenuEntry {
 }
 
 const ENTRIES: MenuEntry[] = [
-  { route: 'squad', icon: '⚽', label: 'Squad', sub: 'Formation & starting XI' },
+  { route: 'squad', icon: '⚽', label: 'Squad', sub: 'Formation, XI & tactics' },
+  { route: 'standings', icon: '🏆', label: 'Qualifying', sub: 'Group table & results' },
   { route: 'pool', icon: '👥', label: 'Player Pool', sub: 'Everyone available to you' },
   { route: 'dual-nationals', icon: '🌍', label: 'Dual Nationals', sub: 'Eligible, not yet committed' },
   { route: 'scouting', icon: '🧭', label: 'Scouting', sub: 'Assign coaches to leagues' },

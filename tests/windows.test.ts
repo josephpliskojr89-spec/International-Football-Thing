@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { WINDOWS, upcomingWindow, windowAtWeek, isRegistrationClosed, fixtureKey } from '@/data/windows'
 import { createCareer } from '@/engine/career'
-import { fixtureFor, squadValidity, SQUAD_SIZE } from '@/engine/fixtures'
+import { currentFixture, squadValidity, SQUAD_SIZE } from '@/engine/fixtures'
 
 describe('international calendar', () => {
   it('finds the upcoming window and weeks away', () => {
@@ -48,13 +48,12 @@ describe('fixtures & squad', () => {
     expect(v.valid).toBe(true)
   })
 
-  it('fixtures are deterministic per season+window', () => {
+  it('the current fixture comes from the campaign and is a group opponent', () => {
     const c = career('BRA')
-    const a = fixtureFor(c, WINDOWS[0], 1)
-    const b = fixtureFor(c, WINDOWS[0], 1)
-    expect(a.opponentId).toBe(b.opponentId)
-    expect(a.home).toBe(b.home)
-    expect(a.opponentId).not.toBe('BRA')
+    const fx = currentFixture(c)!
+    expect(fx.competitive).toBe(true)
+    expect(fx.opponentId).not.toBe('BRA')
+    expect(c.campaign.groupNationIds).toContain(fx.opponentId)
   })
 
   it('squad validity flags an undersized goalkeeper count', () => {

@@ -95,6 +95,40 @@ export interface Tactics {
   focalPointId: string | null // a player to "play through" (must be in the XI)
 }
 
+// ---- Qualifying campaign ----
+export interface GroupStanding {
+  nationId: string
+  p: number
+  w: number
+  d: number
+  l: number
+  gf: number
+  ga: number
+  pts: number
+}
+
+export interface GroupFixture {
+  homeId: string
+  awayId: string
+}
+
+export interface PlayedResult extends GroupFixture {
+  hg: number
+  ag: number
+}
+
+export interface Campaign {
+  cycle: number // which qualifying campaign this is (1, 2, ...)
+  groupNationIds: string[] // the manager's group (incl. the manager nation)
+  matchdays: GroupFixture[][] // round-robin double; one entry per matchday
+  matchdayIndex: number // next matchday to play (0-based)
+  standings: GroupStanding[]
+  recentResults: PlayedResult[] // results of the most recently completed matchday
+  qualifyCount: number // top N qualify
+  complete: boolean
+  qualifiedIds: string[] // set when complete
+}
+
 export interface NewsItem {
   id: string
   week: number
@@ -128,6 +162,7 @@ export interface Career {
   bench: string[] // registered squad players not in the XI (the subs)
   formation: string
   playedFixtures: string[] // fixtureKey()s already played, to avoid replays
+  campaign: Campaign // the World Cup qualifying campaign
 
   news: NewsItem[]
 }

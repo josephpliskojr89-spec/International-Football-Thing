@@ -7,6 +7,7 @@ import type { Career, Player } from './types'
 import { SAVE_VERSION } from '@/data/constants'
 import { overallFor } from './playerGen'
 import { autoFillLineup, autoFillBench, styleForApproach } from './career'
+import { createCampaign } from './campaign'
 import { FORMATIONS_BY_ID, DEFAULT_FORMATION } from '@/data/formations'
 
 export function migrateCareer(raw: unknown): Career {
@@ -65,6 +66,10 @@ export function migrateCareer(raw: unknown): Career {
     bench,
     formation,
     playedFixtures: Array.isArray(c.playedFixtures) ? c.playedFixtures : [],
+    campaign:
+      c.campaign && Array.isArray(c.campaign.matchdays)
+        ? c.campaign
+        : createCampaign(c.managerNationId ?? 'ENG', c.seed ?? 1, 1),
     news: Array.isArray(c.news) ? c.news : [],
   }
 }

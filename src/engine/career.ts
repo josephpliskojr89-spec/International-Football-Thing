@@ -4,6 +4,7 @@ import { NATIONS_BY_ID } from '@/data/nations'
 import { FORMATIONS_BY_ID } from '@/data/formations'
 import type { PlayStyle } from './types'
 import { generateManagerPool } from './playerGen'
+import { createCampaign } from './campaign'
 import { RNG, deriveSeed } from './rng'
 import { generateName } from './nameGen'
 
@@ -49,6 +50,7 @@ export function createCareer(input: NewCareerInput): Career {
     bench,
     formation,
     playedFixtures: [],
+    campaign: createCampaign(input.nationId, seed, 1),
     news: [
       {
         id: 'welcome',

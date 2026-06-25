@@ -97,10 +97,25 @@ NOTE: window opponents are friendlies for now; real qualifying groups /
 tournaments / tables replace the opponent pick in the tournament milestone (the
 window + deadline machinery stays).
 
+### Milestone 4 — tactics + qualifying campaign (done)
+- Tactics tab (Squad): persistent formation + style + focal point, driving the
+  match engine; the focal point funnels chances and risks on his form.
+- "Send a scout" actions on hype headlines; pool highlight; top-3 stars.
+- World Cup qualifying campaign (`engine/campaign.ts`): a 6-nation group, double
+  round-robin, live table. Window fixtures are now qualifiers against group
+  opponents; the OTHER group fixtures each matchday are simmed (Tier 2 full
+  engine for playable nations, Tier 3 Poisson for filler) so the table stays
+  alive. Top 2 qualify; on completion a qualification news beat fires and the
+  next campaign begins. Standings screen with the group table + latest results.
+- Filler nations (`data/fillerNations.ts`): non-playable, ratings-only sides per
+  confederation so groups fill out (and OFU stays tiny).
+
 ### Not yet built (next milestones)
-1. Tournament structure: qualifying groups/formats per confederation, tables,
-   continental + World Cup, rankings/seeding (replaces friendly opponents).
-2. Discovery polish: actionable "send a scout" from a hype headline.
+1. The World Cup finals + continental championships (summer knockout
+   tournaments) — the payoff after qualifying; plus the real 4-year cycle
+   structure and world rankings/seeding.
+2. Confederation-specific qualifying formats (league/hex/group variants) and
+   inter-confederation playoffs.
 3. Eligibility/persuasion (leans, courting, rival-AI clock) + actionable feed.
 4. Template-driven News engine (events → priority → feed mix).
 5. Offline service worker re-enabled (network-first) before release.
