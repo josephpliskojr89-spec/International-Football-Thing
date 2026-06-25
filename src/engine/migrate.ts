@@ -6,7 +6,7 @@
 import type { Career, Player } from './types'
 import { SAVE_VERSION } from '@/data/constants'
 import { overallFor } from './playerGen'
-import { autoFillLineup, autoFillBench } from './career'
+import { autoFillLineup, autoFillBench, styleForApproach } from './career'
 import { FORMATIONS_BY_ID, DEFAULT_FORMATION } from '@/data/formations'
 
 export function migrateCareer(raw: unknown): Career {
@@ -49,6 +49,11 @@ export function migrateCareer(raw: unknown): Career {
     managerName: c.managerName ?? 'The Manager',
     managerNationId: c.managerNationId ?? 'ENG',
     style,
+    tactics: {
+      style: c.tactics?.style ?? styleForApproach(style.approach),
+      focalPointId:
+        c.tactics?.focalPointId && validIds.has(c.tactics.focalPointId) ? c.tactics.focalPointId : null,
+    },
     year: c.year ?? 1,
     season: c.season ?? 1,
     week: c.week ?? 1,

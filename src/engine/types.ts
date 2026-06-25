@@ -89,6 +89,12 @@ export interface ManagerStyle {
   preference: 'Youth' | 'Balanced' | 'Experience'
 }
 
+// Persistent in-game tactics that drive the match engine.
+export interface Tactics {
+  style: PlayStyle
+  focalPointId: string | null // a player to "play through" (must be in the XI)
+}
+
 export interface NewsItem {
   id: string
   week: number
@@ -107,7 +113,8 @@ export interface Career {
 
   managerName: string
   managerNationId: string
-  style: ManagerStyle
+  style: ManagerStyle // initial preferences from new-game setup
+  tactics: Tactics // persistent in-game tactics (drive the match)
 
   year: number // cycle year 1..4 (World Cup pulse)
   season: number // absolute season counter (drives aging + youth intake)

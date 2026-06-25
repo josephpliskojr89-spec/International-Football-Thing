@@ -1,17 +1,20 @@
 import { useMemo, useState } from 'react'
 import { useGame } from '@/state/store'
 import { FORMATIONS, FORMATIONS_BY_ID, roleLabel } from '@/data/formations'
-import type { Player } from '@/engine/types'
+import type { Career, Player } from '@/engine/types'
 import { InCareerHeader } from '../components/InCareerHeader'
 import { FormationPitch } from '../components/FormationPitch'
 import { displayOverall, displayPotential, formColor, freshnessColor, positionColor, topRatedIds } from '../display'
+import { STYLES, STYLE_LABELS, STYLE_DESC } from '@/data/tactics'
 
-type Tab = 'squad' | 'pitch'
+type Tab = 'squad' | 'pitch' | 'tactics'
 
 export function SquadScreen() {
   const career = useGame((s) => s.career)!
   const setFormation = useGame((s) => s.setFormation)
   const swapLineupSlots = useGame((s) => s.swapLineupSlots)
+  const setStyle = useGame((s) => s.setStyle)
+  const setFocalPoint = useGame((s) => s.setFocalPoint)
   const go = useGame((s) => s.go)
   const [tab, setTab] = useState<Tab>('squad')
 
@@ -39,28 +42,23 @@ export function SquadScreen() {
           <button className={tab === 'pitch' ? 'on' : ''} onClick={() => setTab('pitch')}>
             Formation
           </button>
+          <button className={tab === 'tactics' ? 'on' : ''} onClick={() => setTab('tactics')}>
+            Tactics
+          </button>
         </div>
       </div>
 
       <div className="screen__body">
-        <div className="card" style={{ padding: 10 }}>
-          <div className="field-label" style={{ paddingLeft: 4 }}>
-            Formation
-          </div>
-          <div className="chiprow">
-            {FORMATIONS.map((f) => (
-              <button
-                key={f.id}
-                className={`chip ${career.formation === f.id ? 'chip--on' : ''}`}
-                onClick={() => setFormation(f.id)}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {tab === 'squad' ? (
+        {tab === 'tactics' ? (
+          <TacticsTab
+            career={career}
+            playersById={playersById}
+            stars={stars}
+            setFormation={setFormation}
+            setStyle={setStyle}
+            setFocalPoint={setFocalPoint}
+          />
+        ) : tab === 'squad' ? (
           <>
             <div className="sectionhdr">Starting XI</div>
             {formation.slots.map((slot) => {
@@ -99,6 +97,101 @@ export function SquadScreen() {
         )}
       </div>
     </div>
+  )
+}
+
+// The Tactics tab: formation, match style, and a focal point to play through.
+// Three tappable choices, no sliders, all persisted and feeding the engine.
+function TacticsTab({
+  career,
+  playersById,
+  stars,
+  setFormation,
+  setStyle,
+  setFocalPoint,
+}: {
+  career: Career
+  playersById: Record<string, Player>
+  stars: Set<string>
+  setFormation: (id: string) => void
+  setStyle: (s: (typeof STYLES)[number]) => void
+  setFocalPoint: (id: string | null) => void
+}) {
+  const c = career
+  const formation = FORMATIONS_BY_ID[c.formation]
+  const xi = formation.slots
+    .map((slot) => ({ slot, p: playersById[c.lineup[slot.id] ?? ''] }))
+    .filter((x) => x.p)
+
+  return (
+    <>
+      <div className="card" style={{ padding: 12 }}>
+        <div className="field-label">Formation</div>
+        <div className="chiprow">
+          {FORMATIONS.map((f) => (
+            <button
+              key={f.id}
+              className={`chip ${c.formation === f.id ? 'chip--on' : ''}`}
+              onClick={() => setFormation(f.id)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 12 }}>
+        <div className="field-label">Style</div>
+        <div className="chiprow">
+          {STYLES.map((s) => (
+            <button key={s} className={`chip ${c.tactics.style === s ? 'chip--on' : ''}`} onClick={() => setStyle(s)}>
+              {STYLE_LABELS[s]}
+            </button>
+          ))}
+        </div>
+        <div className="muted" style={{ fontSize: 13, marginTop: 8 }}>
+          {STYLE_DESC[c.tactics.style]}
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 12 }}>
+        <div className="field-label">Play through (focal point)</div>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+          Funnel chances through one player. Lifts the attack when he's on song — and stings when he isn't.
+        </div>
+        <button
+          className={`prow ${!c.tactics.focalPointId ? 'prow--selected' : ''}`}
+          style={{ marginBottom: 8 }}
+          onClick={() => setFocalPoint(null)}
+        >
+          <span className="prow__pos" style={{ background: 'var(--line)' }}>—</span>
+          <span className="prow__main">
+            <span className="prow__name">Even — no focal point</span>
+            <span className="prow__sub">Spread the play</span>
+          </span>
+        </button>
+        {xi.map(({ slot, p }) => (
+          <button
+            key={slot.id}
+            className={`prow ${c.tactics.focalPointId === p!.id ? 'prow--selected' : ''}`}
+            style={{ marginBottom: 8 }}
+            onClick={() => setFocalPoint(p!.id)}
+          >
+            <span className="prow__pos" style={{ background: positionColor(p!.position) }}>
+              {roleLabel(slot.id)}
+            </span>
+            <span className="prow__main">
+              <span className="prow__name">
+                {stars.has(p!.id) && <span className="star-top">★ </span>}
+                {p!.name}
+              </span>
+              <span className="prow__sub">{p!.age} · {p!.club}</span>
+            </span>
+            <span className="prow__ovr">{displayOverall(p!)}</span>
+          </button>
+        ))}
+      </div>
+    </>
   )
 }
 

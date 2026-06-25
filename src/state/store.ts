@@ -44,9 +44,19 @@ interface GameState {
   abandonCareer: () => Promise<void>
 
   setSquad: (ids: string[]) => void
-  playScheduledMatch: (style: PlayStyle) => MatchResult | null
+  setStyle: (style: PlayStyle) => void
+  setFocalPoint: (playerId: string | null) => void
+  playScheduledMatch: () => MatchResult | null
   assignCoach: (coachId: string, league: string | null) => void
   sendScout: (newsId: string, playerId: string) => boolean
+}
+
+// Clear the focal point if the chosen player is no longer in the XI.
+function keepFocalIfInXI(tactics: Career['tactics'], xiIds: string[]): Career['tactics'] {
+  if (tactics.focalPointId && !xiIds.includes(tactics.focalPointId)) {
+    return { ...tactics, focalPointId: null }
+  }
+  return tactics
 }
 
 // Debounced autosave so rapid taps don't thrash IndexedDB.
@@ -101,7 +111,8 @@ export const useGame = create<GameState>((set, get) => ({
     const lineup = autoFillLineup(squadPlayers, formationId, career.style)
     const xiIds = Object.values(lineup).filter(Boolean) as string[]
     const bench = career.registeredSquad.filter((id) => !xiIds.includes(id))
-    const next = { ...career, formation: formationId, lineup, bench }
+    const tactics = keepFocalIfInXI(career.tactics, xiIds)
+    const next = { ...career, formation: formationId, lineup, bench, tactics }
     set({ career: next })
     scheduleSave(next)
   },
@@ -154,12 +165,29 @@ export const useGame = create<GameState>((set, get) => ({
     const lineup = autoFillLineup(squadPlayers, career.formation, career.style)
     const xiIds = Object.values(lineup).filter(Boolean) as string[]
     const bench = dedup.filter((id) => !xiIds.includes(id))
-    const next = { ...career, registeredSquad: dedup, lineup, bench }
+    const tactics = keepFocalIfInXI(career.tactics, xiIds)
+    const next = { ...career, registeredSquad: dedup, lineup, bench, tactics }
     set({ career: next })
     scheduleSave(next)
   },
 
-  playScheduledMatch: (style) => {
+  setStyle: (style) => {
+    const { career } = get()
+    if (!career) return
+    const next = { ...career, tactics: { ...career.tactics, style } }
+    set({ career: next })
+    scheduleSave(next)
+  },
+
+  setFocalPoint: (playerId) => {
+    const { career } = get()
+    if (!career) return
+    const next = { ...career, tactics: { ...career.tactics, focalPointId: playerId } }
+    set({ career: next })
+    scheduleSave(next)
+  },
+
+  playScheduledMatch: () => {
     const { career } = get()
     if (!career) return null
     const window = windowAtWeek(career.week)
@@ -171,7 +199,7 @@ export const useGame = create<GameState>((set, get) => ({
     const opponent = NATIONS_BY_ID[fixture.opponentId]
     const isHome = fixture.home
 
-    const managerTeam = buildManagerTeam(career, style, isHome)
+    const managerTeam = buildManagerTeam(career, isHome)
     const opponentTeam = buildOpponentTeam(opponent, career.seed, !isHome)
     const home = isHome ? managerTeam : opponentTeam
     const away = isHome ? opponentTeam : managerTeam

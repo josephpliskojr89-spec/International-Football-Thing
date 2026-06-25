@@ -32,7 +32,8 @@ export function defaultStyleForApproach(approach: Career['style']['approach']): 
   }
 }
 
-export function buildManagerTeam(career: Career, style: PlayStyle, isHome: boolean): MatchTeam {
+// Uses the career's persistent tactics (style + focal point) to build the team.
+export function buildManagerTeam(career: Career, isHome: boolean): MatchTeam {
   const nation = NATIONS_BY_ID[career.managerNationId]
   const playersById = Object.fromEntries(career.players.map((p) => [p.id, p]))
   const playerBySlot: Record<string, Player | null> = {}
@@ -44,8 +45,9 @@ export function buildManagerTeam(career: Career, style: PlayStyle, isHome: boole
     name: nation.name,
     formationId: career.formation,
     playerBySlot,
-    style,
+    style: career.tactics.style,
     isHome,
+    focalPointId: career.tactics.focalPointId,
   }
 }
 

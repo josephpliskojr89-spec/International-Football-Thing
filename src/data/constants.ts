@@ -20,3 +20,16 @@ export const COACH_COUNT = 3 // fixed for v1 (manager progression deferred)
 
 // ---- Squad shape ----
 export const SQUAD_SIZE = 23
+
+// ---- Tactics: focal point ("play through" a chosen star) ----
+export const FOCAL = {
+  // Attack-zone lift when channeling through a quality focal point. Scales with
+  // how much better than a baseline he is; capped so it stays a nudge.
+  attackBoostPer: 0.0045, // per overall point above baseline
+  attackBoostBaseline: 70,
+  attackBoostMax: 0.06,
+  // The focal player's form matters more (risk): extra form swing on the boost.
+  formSwing: 0.5,
+  // How much more likely the focal player is to be the scorer/outlet.
+  scorerWeight: 2.5,
+} as const

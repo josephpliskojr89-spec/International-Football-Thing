@@ -4,10 +4,10 @@
 // No side effects — the caller applies morale/development/ranking changes.
 
 import type { Player, PlayStyle, Position } from './types'
-import { MATCH } from '@/data/constants'
+import { MATCH, FOCAL } from '@/data/constants'
 import { FORMATIONS_BY_ID } from '@/data/formations'
 import { RNG } from './rng'
-import { overallFor } from './playerGen'
+import { overallFor, overallForRaw } from './playerGen'
 
 export interface MatchTeam {
   nationId: string
@@ -17,6 +17,7 @@ export interface MatchTeam {
   playerBySlot: Record<string, Player | null>
   style: PlayStyle
   isHome: boolean
+  focalPointId?: string | null // a player to "play through"
 }
 
 export interface MatchEventLog {
@@ -142,11 +143,24 @@ function finalZones(team: MatchTeam): ZoneStrengths {
   const styleMod = STYLE_MODS[team.style]
   const homeMul = team.isHome ? MATCH.homeBonus : 1
 
-  const att = zoneBase('attack', attack) * formMul(attack) * styleMod.attack * homeMul
+  const att =
+    zoneBase('attack', attack) * formMul(attack) * styleMod.attack * homeMul * focalAttackMultiplier(team)
   const mid = zoneBase('midfield', midfield) * formMul(midfield) * styleMod.midfield * homeMul
   const def = zoneBase('defense', defense) * formMul(defense) * styleMod.defense * homeMul
 
   return { attack: att, midfield: mid, defense: def }
+}
+
+// "Play through" a focal point: a quality outlet lifts the attack, but his form
+// swings it (over-investing in a misfiring star can backfire).
+function focalAttackMultiplier(team: MatchTeam): number {
+  if (!team.focalPointId) return 1
+  const fp = Object.values(team.playerBySlot).find((p) => p?.id === team.focalPointId)
+  if (!fp) return 1
+  const quality = Math.max(0, overallForRaw(fp.position, fp.ratings) - FOCAL.attackBoostBaseline)
+  const formFactor = 1 + FOCAL.formSwing * ((fp.form - 65) / 65) // ~0.5..1.5
+  const boost = Math.min(FOCAL.attackBoostMax, FOCAL.attackBoostPer * quality * Math.max(0.3, formFactor))
+  return 1 + boost
 }
 
 interface Buckets {
@@ -233,10 +247,15 @@ function assignScorers(team: MatchTeam, goals: number, rng: RNG): Scorer[] {
   if (goals === 0) return []
   const onField = Object.values(team.playerBySlot).filter((p): p is Player => !!p)
   if (onField.length === 0) return [] // no XI selected — no named scorers
-  // Weight by finishing + form; forwards dominate, but anyone can score.
+  // Weight by finishing + form; forwards dominate, but anyone can score. The
+  // focal point is a much likelier outlet (you're playing through him).
   const weighted = onField.map((p) => ({
     p,
-    w: Math.pow(p.ratings.finishing, 1.8) * (0.5 + p.form / 100) * positionScoringBias(p.position),
+    w:
+      Math.pow(p.ratings.finishing, 1.8) *
+      (0.5 + p.form / 100) *
+      positionScoringBias(p.position) *
+      (p.id === team.focalPointId ? FOCAL.scorerWeight : 1),
   }))
   const total = weighted.reduce((s, x) => s + x.w, 0)
 

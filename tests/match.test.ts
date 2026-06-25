@@ -17,7 +17,7 @@ function career(nationId: string, seed = 123) {
 describe('match engine', () => {
   it('is deterministic for a given seed', () => {
     const c = career('BRA')
-    const home = buildManagerTeam(c, 'Balanced', true)
+    const home = buildManagerTeam(c, true)
     const away = buildOpponentTeam(NATIONS_BY_ID['ARG'], c.seed, false)
     const seed = matchSeed(c.seed, c.year, c.week, 'ARG')
     const a = simulateMatch(home, away, seed)
@@ -29,7 +29,7 @@ describe('match engine', () => {
 
   it('produces realistic scoring and consistent scorer counts', () => {
     const c = career('GER')
-    const home = buildManagerTeam(c, 'Balanced', true)
+    const home = buildManagerTeam(c, true)
     const away = buildOpponentTeam(NATIONS_BY_ID['ITA'], c.seed, false)
 
     let totalGoals = 0
@@ -52,7 +52,7 @@ describe('match engine', () => {
 
   it('the stronger side wins clearly more often over a sample', () => {
     const c = career('BRA') // 88 rating
-    const home = buildManagerTeam(c, 'Balanced', true)
+    const home = buildManagerTeam(c, true)
     const away = buildOpponentTeam(NATIONS_BY_ID['NZL'], c.seed, false) // 64 rating
     let homeWins = 0
     let awayWins = 0

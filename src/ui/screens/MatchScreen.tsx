@@ -3,11 +3,8 @@ import { useGame } from '@/state/store'
 import { NATIONS_BY_ID } from '@/data/nations'
 import { windowAtWeek } from '@/data/windows'
 import { fixtureFor } from '@/engine/fixtures'
-import { defaultStyleForApproach } from '@/engine/matchSetup'
-import type { PlayStyle } from '@/engine/types'
+import { STYLE_LABELS } from '@/data/tactics'
 import type { MatchResult } from '@/engine/match'
-
-const STYLES: PlayStyle[] = ['Balanced', 'Possession', 'Counter', 'Direct', 'HighPress']
 
 export function MatchScreen() {
   const career = useGame((s) => s.career)!
@@ -20,7 +17,9 @@ export function MatchScreen() {
     [career, window],
   )
 
-  const [style, setStyle] = useState<PlayStyle>(defaultStyleForApproach(career.style.approach))
+  const focal = career.tactics.focalPointId
+    ? career.players.find((p) => p.id === career.tactics.focalPointId)
+    : null
   const [result, setResult] = useState<MatchResult | null>(null)
 
   if (!window || !fixture) {
@@ -47,7 +46,7 @@ export function MatchScreen() {
     return <MatchResultView result={result} managerIsHome={isHome} onDone={() => go('schedule')} />
   }
 
-  const kickOff = () => setResult(playScheduledMatch(style))
+  const kickOff = () => setResult(playScheduledMatch())
 
   return (
     <div className="screen">
@@ -74,15 +73,16 @@ export function MatchScreen() {
 
         <div className="card">
           <div className="field-label">Your match plan</div>
-          <div className="chiprow">
-            {STYLES.map((s) => (
-              <button key={s} className={`chip ${style === s ? 'chip--on' : ''}`} onClick={() => setStyle(s)}>
-                {s}
-              </button>
-            ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, marginTop: 2 }}>
+            <span className="muted">Style</span>
+            <span>{STYLE_LABELS[career.tactics.style]}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, marginTop: 6 }}>
+            <span className="muted">Play through</span>
+            <span>{focal ? focal.name : 'Even — no focal point'}</span>
           </div>
           <div className="faint" style={{ fontSize: 13, marginTop: 10 }}>
-            Your registered squad and XI are set. Adjust the XI on the Squad screen.
+            Set your style, focal point and XI on the Squad → Tactics tab.
           </div>
         </div>
       </div>

@@ -2,9 +2,15 @@ import type { Career, ManagerStyle, Player } from './types'
 import { SAVE_VERSION, COACH_COUNT } from '@/data/constants'
 import { NATIONS_BY_ID } from '@/data/nations'
 import { FORMATIONS_BY_ID } from '@/data/formations'
+import type { PlayStyle } from './types'
 import { generateManagerPool } from './playerGen'
 import { RNG, deriveSeed } from './rng'
 import { generateName } from './nameGen'
+
+// Approach -> default match style (kept local to avoid a matchSetup import cycle).
+export function styleForApproach(approach: ManagerStyle['approach']): PlayStyle {
+  return approach === 'Attacking' ? 'HighPress' : approach === 'Defensive' ? 'Counter' : 'Balanced'
+}
 
 export interface NewCareerInput {
   managerName: string
@@ -31,6 +37,7 @@ export function createCareer(input: NewCareerInput): Career {
     managerName: input.managerName.trim() || 'The Manager',
     managerNationId: input.nationId,
     style: input.style,
+    tactics: { style: styleForApproach(input.style.approach), focalPointId: null },
     year: 1,
     season: 1,
     week: 1,
