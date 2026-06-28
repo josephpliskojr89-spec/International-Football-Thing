@@ -51,6 +51,9 @@ export function createCareer(input: NewCareerInput): Career {
     formation,
     playedFixtures: [],
     campaign: createCampaign(input.nationId, seed, 1),
+    qualifiedForWorldCup: false,
+    tournament: null,
+    trophies: [],
     news: [
       {
         id: 'welcome',

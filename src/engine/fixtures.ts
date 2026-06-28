@@ -10,8 +10,12 @@ import {
   windowAtWeek,
   isRegistrationClosed,
   fixtureKey,
+  tournamentForYear,
+  tournamentRoundAtWeek,
+  inTournamentBlock,
 } from '@/data/windows'
 import { managerFixture } from './campaign'
+import { managerTie, roundName, totalRounds } from './tournament'
 
 export const SQUAD_SIZE = 26
 export const MIN_GK = 3
@@ -32,6 +36,38 @@ export function currentFixture(career: Career): Fixture | null {
   const mf = managerFixture(career.campaign, career.managerNationId)
   if (!mf) return null
   return { opponentId: mf.opponentId, competitive: true, home: mf.home }
+}
+
+// The single match the manager must play THIS week (qualifier or a finals
+// knockout tie), or null. A finals tie takes precedence during the summer block.
+export type CurrentMatch =
+  | { type: 'QUALIFIER'; opponentId: string; home: boolean; label: string }
+  | { type: 'TOURNAMENT'; opponentId: string; home: boolean; label: string; round: string }
+
+export function currentMatch(career: Career): CurrentMatch | null {
+  const t = career.tournament
+  if (t && !t.champion) {
+    if (tournamentRoundAtWeek(career.week) === t.roundIndex) {
+      const mt = managerTie(t)
+      if (mt) {
+        return {
+          type: 'TOURNAMENT',
+          opponentId: mt.opponentId,
+          home: mt.home,
+          label: t.name,
+          round: roundName(t.kind, t.roundIndex, totalRounds(t.field.length)),
+        }
+      }
+    }
+    return null // finals running but no manager tie this week (eliminated/watching)
+  }
+
+  const window = windowAtWeek(career.week)
+  if (window && !career.playedFixtures.includes(fixtureKey(career.season, window.id))) {
+    const mf = managerFixture(career.campaign, career.managerNationId)
+    if (mf) return { type: 'QUALIFIER', opponentId: mf.opponentId, home: mf.home, label: 'World Cup Qualifier' }
+  }
+  return null
 }
 
 // Whether the registered squad satisfies the minimum positional requirements.
@@ -67,6 +103,8 @@ function playedThisWeek(career: Career): boolean {
 // through its match week — unless that match is already played, in which case
 // the next window governs.
 export function isSquadLocked(career: Career): boolean {
+  // The 26 is locked through a summer finals block (deadline -> last round week).
+  if (tournamentForYear(career.year) && inTournamentBlock(career.week)) return true
   return isRegistrationClosed(playedThisWeek(career) ? career.week + 1 : career.week)
 }
 

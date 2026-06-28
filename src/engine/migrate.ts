@@ -70,6 +70,9 @@ export function migrateCareer(raw: unknown): Career {
       c.campaign && Array.isArray(c.campaign.matchdays)
         ? c.campaign
         : createCampaign(c.managerNationId ?? 'ENG', c.seed ?? 1, 1),
+    qualifiedForWorldCup: !!c.qualifiedForWorldCup,
+    tournament: c.tournament ?? null,
+    trophies: Array.isArray(c.trophies) ? c.trophies : [],
     news: Array.isArray(c.news) ? c.news : [],
   }
 }

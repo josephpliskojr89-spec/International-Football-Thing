@@ -20,17 +20,26 @@ const ENTRIES: MenuEntry[] = [
 
 export function MenuSheet({ onClose }: { onClose: () => void }) {
   const go = useGame((s) => s.go)
+  const tournament = useGame((s) => s.career?.tournament)
 
   const navigate = (route: Route) => {
     onClose()
     go(route)
   }
 
+  // The Finals entry only appears while a summer tournament is live.
+  const entries: MenuEntry[] = tournament
+    ? [
+        { route: 'bracket', icon: '🏆', label: tournament.name, sub: 'Bracket & results' },
+        ...ENTRIES.filter((e) => e.route !== 'standings'),
+      ]
+    : ENTRIES
+
   return (
     <div className="sheet-backdrop" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet__grip" />
-        {ENTRIES.map((e) => (
+        {entries.map((e) => (
           <button key={e.route} className="menu-item" onClick={() => navigate(e.route)}>
             <span className="menu-item__icon">{e.icon}</span>
             <span style={{ flex: 1 }}>

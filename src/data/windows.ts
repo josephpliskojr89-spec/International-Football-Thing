@@ -50,3 +50,30 @@ export function isRegistrationClosed(week: number): boolean {
 export function fixtureKey(season: number, windowId: string): string {
   return `${season}:${windowId}`
 }
+
+// ---- Summer finals tournaments (the 4-year cycle's two payoffs) ----
+// Cycle year 1 -> Continental Championship; year 4 -> World Cup. Played over a
+// run of summer weeks, one knockout round per week, after a registration
+// deadline that locks the squad for the whole block.
+export const TOURNAMENT_DEADLINE_WEEK = 24
+export const TOURNAMENT_ROUND_WEEKS = [26, 28, 30, 32] // up to 4 rounds (R16->Final)
+
+export type TournamentSlot = 'CONTINENTAL' | 'WORLD_CUP' | null
+
+// Which finals (if any) a given cycle year hosts.
+export function tournamentForYear(year: number): TournamentSlot {
+  if (year === 1) return 'CONTINENTAL'
+  if (year === 4) return 'WORLD_CUP'
+  return null
+}
+
+// The bracket round index to play this week (0-based), or -1 if not a round week.
+export function tournamentRoundAtWeek(week: number): number {
+  return TOURNAMENT_ROUND_WEEKS.indexOf(week)
+}
+
+// The squad is locked through a tournament once its deadline passes, until the
+// block ends.
+export function inTournamentBlock(week: number): boolean {
+  return week >= TOURNAMENT_DEADLINE_WEEK && week <= TOURNAMENT_ROUND_WEEKS[TOURNAMENT_ROUND_WEEKS.length - 1]
+}

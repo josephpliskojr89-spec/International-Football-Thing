@@ -129,6 +129,36 @@ export interface Campaign {
   qualifiedIds: string[] // set when complete
 }
 
+// ---- Finals tournaments (Continental Championship / World Cup) ----
+export type TournamentKind = 'CONTINENTAL' | 'WORLD_CUP'
+
+export interface Tie {
+  aId: string
+  bId: string
+  aGoals: number | null
+  bGoals: number | null
+  winnerId: string | null
+  pens: boolean // decided on penalties (draw after normal time)
+}
+
+export interface Tournament {
+  kind: TournamentKind
+  name: string
+  managerId: string
+  inField: boolean // is the manager actually playing (else watching)
+  field: string[] // seeded nation ids
+  rounds: Tie[][] // one entry per round; round 0 is the first round
+  roundIndex: number // next round to play
+  champion: string | null
+  eliminated: boolean // manager knocked out
+}
+
+export interface Trophy {
+  kind: TournamentKind
+  name: string
+  season: number
+}
+
 export interface NewsItem {
   id: string
   week: number
@@ -163,6 +193,9 @@ export interface Career {
   formation: string
   playedFixtures: string[] // fixtureKey()s already played, to avoid replays
   campaign: Campaign // the World Cup qualifying campaign
+  qualifiedForWorldCup: boolean // result of the most recent qualifying campaign
+  tournament: Tournament | null // the active summer finals tournament, if any
+  trophies: Trophy[] // honours won
 
   news: NewsItem[]
 }

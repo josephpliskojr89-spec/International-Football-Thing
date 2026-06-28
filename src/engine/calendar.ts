@@ -108,6 +108,8 @@ export function advanceWeek(career: Career): Career {
     // Targeted looks persist across weeks; they refresh per inter-window period
     // (reset when a window match is played), not every week.
     coaches: career.coaches,
+    // A finished/old finals tournament is cleared when a new cycle year begins.
+    tournament: rolledSeason ? null : career.tournament,
     news: [...news, ...career.news].slice(0, 80),
   }
 }

@@ -1,18 +1,16 @@
 import { useMemo, useState } from 'react'
 import { useGame } from '@/state/store'
 import { ALL_NATIONS_BY_ID } from '@/data/nations'
-import { windowAtWeek } from '@/data/windows'
-import { currentFixture } from '@/engine/fixtures'
+import { currentMatch } from '@/engine/fixtures'
 import { STYLE_LABELS } from '@/data/tactics'
 import type { MatchResult } from '@/engine/match'
 
 export function MatchScreen() {
   const career = useGame((s) => s.career)!
   const go = useGame((s) => s.go)
-  const playScheduledMatch = useGame((s) => s.playScheduledMatch)
+  const playCurrentMatch = useGame((s) => s.playCurrentMatch)
 
-  const window = windowAtWeek(career.week)
-  const fixture = useMemo(() => currentFixture(career), [career])
+  const match = useMemo(() => currentMatch(career), [career])
 
   const focal = career.tactics.focalPointId
     ? career.players.find((p) => p.id === career.tactics.focalPointId)
@@ -22,7 +20,7 @@ export function MatchScreen() {
   // to the next fixture, so the result view must not re-read the live fixture.
   const [playedHome, setPlayedHome] = useState(false)
 
-  if (!window || !fixture) {
+  if (!match) {
     return (
       <div className="screen">
         <div className="topbar">
@@ -38,16 +36,18 @@ export function MatchScreen() {
     )
   }
 
-  const isHome = fixture.home
+  const isHome = match.home
   const me = ALL_NATIONS_BY_ID[career.managerNationId]
-  const opp = ALL_NATIONS_BY_ID[fixture.opponentId]
+  const opp = ALL_NATIONS_BY_ID[match.opponentId]
+  const isTournament = match.type === 'TOURNAMENT'
+  const compLabel = isTournament ? `${match.label} · ${match.round}` : match.label
 
   if (result) {
     return <MatchResultView result={result} managerIsHome={playedHome} onDone={() => go('schedule')} />
   }
 
   const kickOff = () => {
-    const r = playScheduledMatch()
+    const r = playCurrentMatch()
     if (r) {
       setPlayedHome(isHome) // captured before career advances
       setResult(r)
@@ -61,20 +61,27 @@ export function MatchScreen() {
           ‹
         </button>
         <div>
-          <div className="topbar__title">{window.label}</div>
+          <div className="topbar__title">{isTournament ? match.round : match.label}</div>
           <div className="topbar__sub">{isHome ? 'Home' : 'Away'} · {career.formation}</div>
         </div>
       </div>
 
       <div className="screen__body">
         <div className="card center" style={{ padding: 18 }}>
-          <div className="muted" style={{ fontSize: 12, letterSpacing: 1 }}>FIXTURE</div>
+          <div className="muted" style={{ fontSize: 12, letterSpacing: 1 }}>
+            {isTournament ? match.label.toUpperCase() : 'FIXTURE'}
+          </div>
           <div style={{ fontSize: 22, fontWeight: 900, margin: '6px 0' }}>
             {isHome ? me.name : opp.name} v {isHome ? opp.name : me.name}
           </div>
           <div className="muted" style={{ fontSize: 13 }}>
-            World Cup Qualifier · {opp.name} ({opp.nationRating}) play {opp.tacticalIdentity}
+            {compLabel} · {opp.name} ({opp.nationRating}) play {opp.tacticalIdentity}
           </div>
+          {isTournament && (
+            <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>
+              Knockout — a draw goes to a penalty shootout.
+            </div>
+          )}
         </div>
 
         <div className="card">

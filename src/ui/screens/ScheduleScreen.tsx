@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { useGame } from '@/state/store'
 import { ALL_NATIONS_BY_ID, NATIONS_BY_ID } from '@/data/nations'
-import { windowAtWeek, fixtureKey } from '@/data/windows'
-import { effectiveUpcoming } from '@/engine/fixtures'
+import { effectiveUpcoming, currentMatch } from '@/engine/fixtures'
 import { MenuSheet } from '../components/MenuSheet'
 
 export function ScheduleScreen() {
@@ -16,10 +15,14 @@ export function ScheduleScreen() {
 
   const nation = NATIONS_BY_ID[career.managerNationId]
 
-  // A match to play THIS week?
-  const matchWindow = windowAtWeek(career.week)
-  const matchPending =
-    matchWindow && !career.playedFixtures.includes(fixtureKey(career.season, matchWindow.id))
+  // A match to play THIS week (qualifier OR a finals knockout tie)?
+  const match = currentMatch(career)
+  const matchPending = !!match
+  const isTournamentMatch = match?.type === 'TOURNAMENT'
+
+  // An active summer finals tournament (running but not yet over), even on a week
+  // the manager isn't playing (eliminated / watching / between rounds).
+  const tournament = career.tournament && !career.tournament.champion ? career.tournament : null
 
   // The upcoming window (for the next-window card + deadline), accounting for a
   // match already played this week.
@@ -52,12 +55,31 @@ export function ScheduleScreen() {
       <div className="screen__body">
         {matchPending ? (
           <button className="card windowcard" onClick={() => go('match')} style={{ textAlign: 'left' }}>
-            <div className="muted" style={{ fontSize: 12, letterSpacing: 1 }}>MATCH WEEK · {matchWindow!.label}</div>
+            <div className="muted" style={{ fontSize: 12, letterSpacing: 1 }}>
+              {isTournamentMatch ? `${match!.label.toUpperCase()} · ${match!.round}` : `MATCH WEEK · ${match!.label}`}
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
-              <span style={{ fontSize: 26 }}>⚽</span>
+              <span style={{ fontSize: 26 }}>{isTournamentMatch ? '🏆' : '⚽'}</span>
               <div>
-                <div style={{ fontWeight: 800 }}>Play your match</div>
+                <div style={{ fontWeight: 800 }}>
+                  {isTournamentMatch ? `vs ${ALL_NATIONS_BY_ID[match!.opponentId].name}` : 'Play your match'}
+                </div>
                 <div className="muted" style={{ fontSize: 13 }}>Tap to take charge</div>
+              </div>
+              <div className="spacer" />
+              <span className="faint">›</span>
+            </div>
+          </button>
+        ) : tournament ? (
+          <button className="card windowcard" onClick={() => go('bracket')} style={{ textAlign: 'left' }}>
+            <div className="muted" style={{ fontSize: 12, letterSpacing: 1 }}>{tournament.name.toUpperCase()}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
+              <span style={{ fontSize: 26 }}>🏆</span>
+              <div>
+                <div style={{ fontWeight: 800 }}>
+                  {tournament.eliminated ? 'You are out — follow the bracket' : 'Finals are underway'}
+                </div>
+                <div className="muted" style={{ fontSize: 13 }}>Tap to view the bracket</div>
               </div>
               <div className="spacer" />
               <span className="faint">›</span>
