@@ -110,13 +110,28 @@ window + deadline machinery stays).
 - Filler nations (`data/fillerNations.ts`): non-playable, ratings-only sides per
   confederation so groups fill out (and OFU stays tiny).
 
+### Milestone 5 — finals tournaments + the 4-year cycle (done)
+- Summer knockout finals (`engine/tournament.ts`): seeded single-elimination
+  brackets. Continental Championship in cycle year 1 (top of your confederation,
+  8 or 4 teams, you always in); World Cup in cycle year 4 (top 16 worldwide,
+  you in only if you qualified). Your ties are played through the full engine,
+  the rest simmed (Tier 2 / Tier 3); draws settled on penalties.
+- Calendar (`data/windows.ts`): finals block (deadline wk24, rounds 26-32),
+  `tournamentForYear`; squad locks through the block; old tournament cleared on
+  the cycle rollover. Trophies banked to `career.trophies`.
+- Bracket screen + knockout match framing + finals-aware feed (draw / result /
+  elimination / champion beats) + a Finals menu entry while one is live.
+
 ### Not yet built (next milestones)
-1. The World Cup finals + continental championships (summer knockout
-   tournaments) — the payoff after qualifying; plus the real 4-year cycle
-   structure and world rankings/seeding.
+1. World rankings / proper seeding (finals currently seed by raw nation rating,
+   not an earned ranking).
 2. Confederation-specific qualifying formats (league/hex/group variants) and
    inter-confederation playoffs.
-3. Eligibility/persuasion (leans, courting, rival-AI clock) + actionable feed.
-4. Template-driven News engine (events → priority → feed mix).
-5. Offline service worker re-enabled (network-first) before release.
+3. Eligibility/persuasion (courting a dual national, rival-AI clock). The data
+   model (leans, eligibleNations, eligibilityState, tiedNation) and the Dual
+   Nationals screen exist; the interactive courting loop does not.
+4. Template-driven News engine (events → priority → feed mix). Current feed is
+   hand-written template banks, not the bible's event-priority system.
+5. Offline service worker re-enabled (network-first) before release — currently
+   self-destroying to kill stuck SWs.
 6. Manager progression (move nations, get sacked, skills) — deferred per design.
