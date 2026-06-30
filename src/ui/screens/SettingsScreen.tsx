@@ -46,7 +46,13 @@ export function SettingsScreen() {
         <div className="card">
           <div className="field-label">About</div>
           <div className="muted" style={{ fontSize: 14 }}>
-            National Team Manager v0.1 — a colorful, offline-first international management game.
+            National Team Manager — a colorful, offline-first international management game.
+          </div>
+          <div
+            className="faint"
+            style={{ fontSize: 13, marginTop: 8, fontVariantNumeric: 'tabular-nums' }}
+          >
+            Build v{__APP_VERSION__} · {__BUILD_HASH__} · {__BUILD_DATE__}
           </div>
         </div>
       </div>

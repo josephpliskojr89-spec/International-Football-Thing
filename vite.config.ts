@@ -2,11 +2,30 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { resolve } from 'node:path'
+import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+
+// Build stamp surfaced in Settings → About so a deployed build can be confirmed
+// at a glance. The commit hash changes on every push, so no manual bumping is
+// needed; the date is build-time. Falls back gracefully if git isn't available.
+const pkgVersion = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8')).version
+let gitHash = 'dev'
+try {
+  gitHash = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim()
+} catch {
+  // not a git checkout (or git missing) — keep the 'dev' fallback
+}
+const buildDate = new Date().toISOString().slice(0, 10)
 
 // Mobile-first PWA. Capacitor-ready: build output goes to dist/ with no
 // absolute-path assumptions, so `npx cap add ios|android` later needs no rewrite.
 export default defineConfig({
   base: './',
+  define: {
+    __APP_VERSION__: JSON.stringify(pkgVersion),
+    __BUILD_HASH__: JSON.stringify(gitHash),
+    __BUILD_DATE__: JSON.stringify(buildDate),
+  },
   resolve: {
     alias: { '@': resolve(__dirname, 'src') },
   },
