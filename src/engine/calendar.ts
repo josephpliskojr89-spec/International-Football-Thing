@@ -242,6 +242,29 @@ export function advanceWeek(career: Career): Career {
   news.push(...hypeNews(players, career, year, week, rng))
   news.push(...flavorNews(players, career, year, week, rng))
 
+  // 4b) Club watch: what your players did for their clubs this weekend. This
+  // is what the weeks BETWEEN windows are made of — you following your people
+  // from a distance. Skipped on international match weeks (they're with you).
+  if (!windowAtWeek(week)) {
+    news.push(...clubWatchNews(players, career, year, week, rng))
+  }
+
+  // 4c) Club duty bites: occasionally a registered player gets hurt at his
+  // club. The phone call every international manager dreads.
+  {
+    const inSquad = new Set(career.registeredSquad)
+    players = players.map((p) => {
+      if (!inSquad.has(p.id) || p.injuredWeeks > 0) return p
+      if (!rng.bool(0.006 + p.injuryRisk * 0.0001)) return p
+      const weeks = rng.bool(0.6) ? rng.int(1, 2) : rng.int(3, 5)
+      news.push(mkNews(`club-inj-${p.id}-${season}-${week}`, year, week, 'INJURY', weeks >= 3 ? 0.75 : 0.55,
+        weeks >= 3
+          ? `Bad news from ${p.club}: ${p.name} has been injured in league action and faces around ${weeks} weeks out.`
+          : `${p.name} picked up a knock playing for ${p.club} — expected back within ${weeks === 1 ? 'the week' : `${weeks} weeks`}.`))
+      return { ...p, injuredWeeks: weeks }
+    })
+  }
+
   // 5) On rollover (retirements) or a mid-season defection (a LOST dual
   // national), squad members may have vanished — reconcile the registered 26 /
   // XI / bench / focal point so we never field a dead player id.
@@ -397,6 +420,71 @@ function flavorNews(players: Player[], career: Career, year: number, week: numbe
     )
   }
   return out
+}
+
+// Two dispatches a week from the club game, weighted toward YOUR 26 and the
+// stars — goals, clean sheets, bench worries, form wobbles. Pure flavor with
+// teeth: it reads freshness/form/playing time, so it doubles as soft scouting.
+function clubWatchNews(players: Player[], career: Career, year: number, week: number, rng: RNG): NewsItem[] {
+  if (players.length === 0) return []
+  const inSquad = new Set(career.registeredSquad)
+  // Weighted pool: squad members count triple, elite reads count double.
+  const weighted: Player[] = []
+  for (const p of players) {
+    if (p.eligibilityState === 'LOST' || p.injuredWeeks > 0) continue
+    weighted.push(p)
+    if (inSquad.has(p.id)) weighted.push(p, p)
+    if (p.knownOverall >= 80) weighted.push(p)
+  }
+  if (weighted.length === 0) return []
+
+  const out: NewsItem[] = []
+  const used = new Set<string>()
+  for (let i = 0; i < 2; i++) {
+    const p = rng.pick(weighted)
+    if (used.has(p.id)) continue
+    used.add(p.id)
+    out.push(mkNews(`clubwatch-${p.id}-${year}-${week}`, year, week, 'CLUB_WATCH', 0.35, clubLine(p, rng)))
+  }
+  return out
+}
+
+function clubLine(p: Player, rng: RNG): string {
+  if (p.playingTime < 0.35) {
+    return rng.pick([
+      `${p.name} watched from the bench again at ${p.club}. The minutes just aren't coming — and it shows in his sharpness.`,
+      `Still no start for ${p.name} at ${p.club}. A player you can't watch play is a player you can't trust in ${p.position === 'GK' ? 'goal' : 'the XI'}.`,
+    ])
+  }
+  if (p.form >= 72) {
+    if (p.position === 'FW') return rng.pick([
+      `${p.name} scored again for ${p.club} — that's the kind of form you build a window around.`,
+      `Another goal for ${p.name} in the ${p.clubLeague}. ${p.club} fans are singing his name; yours soon might be too.`,
+    ])
+    if (p.position === 'MF') return rng.pick([
+      `${p.name} ran the match for ${p.club} at the weekend. Everything good went through him.`,
+      `A goal and the game's tempo: ${p.name} was ${p.club}'s best player again.`,
+    ])
+    if (p.position === 'DF') return rng.pick([
+      `${p.name} was a wall for ${p.club} — another clean sheet built on his reading of the game.`,
+      `Nothing got past ${p.name} at the weekend. ${p.club} look meaner with him back there.`,
+    ])
+    return rng.pick([
+      `${p.name} kept a clean sheet for ${p.club}, including one save that had the ${p.clubLeague} talking.`,
+      `Two match-winning stops from ${p.name} — ${p.club} owe him points this month.`,
+    ])
+  }
+  if (p.form <= 45) {
+    return rng.pick([
+      `${p.name} struggled again as ${p.club} dropped points. A quiet word — or a rest — might be needed.`,
+      `Rough patch for ${p.name}: hooked at half-time by ${p.club}. Form is a fickle friend.`,
+    ])
+  }
+  return rng.pick([
+    `${p.name} put in a steady shift for ${p.club} — nothing spectacular, nothing wrong.`,
+    `Ninety unremarkable, professional minutes for ${p.name} at ${p.club}. Managers notice those too.`,
+    `${p.name} did his job for ${p.club} at the weekend, the way he does most weekends.`,
+  ])
 }
 
 function mkNews(id: string, year: number, week: number, type: string, magnitude: number, text: string): NewsItem {

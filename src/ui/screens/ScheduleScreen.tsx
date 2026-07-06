@@ -7,6 +7,7 @@ import { MenuSheet } from '../components/MenuSheet'
 export function ScheduleScreen() {
   const career = useGame((s) => s.career)!
   const advanceWeek = useGame((s) => s.advanceWeek)
+  const advanceToNextEvent = useGame((s) => s.advanceToNextEvent)
   const go = useGame((s) => s.go)
   const sendScout = useGame((s) => s.sendScout)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -158,9 +159,14 @@ export function ScheduleScreen() {
             Play Match ›
           </button>
         ) : (
-          <button className="btn btn--primary btn--lg btn--block" onClick={advanceWeek}>
-            Advance Week ›
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn--lg" style={{ flex: 1 }} onClick={advanceWeek}>
+              +1 Week
+            </button>
+            <button className="btn btn--primary btn--lg" style={{ flex: 2 }} onClick={advanceToNextEvent}>
+              ⏩ To next event
+            </button>
+          </div>
         )}
       </div>
 

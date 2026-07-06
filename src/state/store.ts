@@ -85,6 +85,7 @@ interface GameState {
   hydrate: () => Promise<void>
 
   advanceWeek: () => void
+  advanceToNextEvent: () => void
   setFormation: (formationId: string) => void
   swapLineupSlots: (slotA: string, slotB: string) => void
   saveNow: () => Promise<void>
@@ -245,6 +246,30 @@ export const useGame = create<GameState>((set, get) => ({
     next = progressTournament(next) // create the summer finals / auto-sim rounds you're not in
     set({ career: next })
     scheduleSave(next)
+  },
+
+  // Fast-forward through the quiet weeks: advance until something needs YOU —
+  // a match, a registration deadline, big news, a sacking, an offer. The weeks
+  // still happen (club watch, courting clocks, world results all tick).
+  advanceToNextEvent: () => {
+    const { career } = get()
+    if (!career || career.sackedFrom || currentMatch(career)) return
+    let c = career
+    for (let i = 0; i < 14; i++) {
+      let next = advanceWeekEngine(c)
+      next = progressTournament(next)
+      c = next
+      if (currentMatch(c)) break
+      if (c.sackedFrom || c.offers.length > 0) break
+      // Stop on a registration deadline (you'll want to pick your 26)...
+      const w = windowAtWeek(c.week + 1)
+      if (w) break // next week is a match week: stop ON the deadline week
+      if (c.week === TOURNAMENT_DEADLINE_WEEK - 1 && tournamentForYear(c.year)) break
+      // ...or when something big lands in the feed.
+      if (c.news[0] && c.news[0].magnitude >= 0.9 && !career.news.some((n) => n.id === c.news[0].id)) break
+    }
+    set({ career: c })
+    scheduleSave(c)
   },
 
   setFormation: (formationId) => {

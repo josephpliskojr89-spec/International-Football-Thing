@@ -12,37 +12,53 @@ import { ALL_NATIONS, ALL_NATIONS_BY_ID } from '@/data/nations'
 import { HERITAGE, HERITAGE_FLAVOR_CHANCE } from '@/data/heritage'
 import { maturityFactor } from './ageCurve'
 
-const LEAGUES = [
-  'English First Division',
-  'Spanish First Division',
-  'German First Division',
-  'Italian First Division',
-  'French First Division',
-  'Dutch First Division',
-  'Portuguese First Division',
-  'American First Division',
-  'Belgian First Division',
-  'Turkish First Division',
-  'Saudi First Division',
-  'Brazilian First Division',
-  'Domestic League',
-]
+import { DOMESTIC_LEAGUE, TIER1_LEAGUES, TIER2_LEAGUES, GENERIC_LEAGUE } from '@/data/leagues'
+import type { League } from '@/data/leagues'
 
 const CLUB_PREFIXES = ['United', 'City', 'Athletic', 'Sporting', 'Real', 'Inter', 'Olympic', 'Rovers']
 const CLUB_PLACES = ['North', 'Port', 'Lake', 'Hill', 'River', 'East', 'West', 'Central', 'Gold', 'Bay']
 
-const TOP_LEAGUES = LEAGUES.slice(0, 5) // English/Spanish/German/Italian/French
-const MID_LEAGUES = LEAGUES.slice(5, 10) // Dutch/Portuguese/American/Belgian/Turkish
-const LOW_LEAGUES = LEAGUES.slice(10) // Saudi/Brazilian/Domestic
+// Where a player earns his living, from his NATIONALITY and his level — the
+// real-world shape of club football:
+//  - Big-league nations (ENG/ESP/GER/ITA/FRA) keep most of their players home.
+//  - Strong-league nations (BRA/ARG/NED/POR/MEX/USA/JPN...) export their
+//    stars to the elite leagues and keep the squad players domestic.
+//  - Everyone else: the best go abroad, the rest play at home.
+function assignClub(nationality: string, overall: number, rng: RNG): { club: string; clubLeague: string } {
+  const home = DOMESTIC_LEAGUE[nationality]
+  const fromLeague = (l: League) => ({ club: rng.pick(l.clubs), clubLeague: l.name })
+  const generic = () => ({
+    club: `${rng.pick(CLUB_PLACES)} ${rng.pick(CLUB_PREFIXES)}`,
+    clubLeague: GENERIC_LEAGUE,
+  })
 
-// Better players gravitate to stronger leagues; squad/fringe players cluster in
-// mid and domestic leagues. This clustering is what makes coverage a real
-// allocation puzzle — cover the big leagues to track your stars.
-function pickLeague(overall: number, rng: RNG): string {
-  const r = rng.next()
-  if (overall >= 82) return r < 0.7 ? rng.pick(TOP_LEAGUES) : r < 0.93 ? rng.pick(MID_LEAGUES) : rng.pick(LOW_LEAGUES)
-  if (overall >= 72) return r < 0.38 ? rng.pick(TOP_LEAGUES) : r < 0.82 ? rng.pick(MID_LEAGUES) : rng.pick(LOW_LEAGUES)
-  return r < 0.12 ? rng.pick(TOP_LEAGUES) : r < 0.45 ? rng.pick(MID_LEAGUES) : rng.pick(LOW_LEAGUES)
+  if (home?.tier === 1) {
+    // A big-league country: the domestic league IS the destination.
+    const r = rng.next()
+    if (r < 0.8) return fromLeague(home)
+    if (r < 0.95) return fromLeague(rng.pick(TIER1_LEAGUES.filter((l) => l !== home)))
+    return fromLeague(rng.pick(TIER2_LEAGUES))
+  }
+  if (home) {
+    // A strong league: stars leave for the elite, depth stays home.
+    if (overall >= 84) return rng.bool(0.75) ? fromLeague(rng.pick(TIER1_LEAGUES)) : fromLeague(home)
+    if (overall >= 76) {
+      const r = rng.next()
+      if (r < 0.3) return fromLeague(rng.pick(TIER1_LEAGUES))
+      if (r < 0.42) return fromLeague(rng.pick(TIER2_LEAGUES.filter((l) => l !== home)))
+      return fromLeague(home)
+    }
+    return rng.bool(0.88) ? fromLeague(home) : fromLeague(rng.pick(TIER2_LEAGUES))
+  }
+  // No serious domestic league: quality is a plane ticket.
+  if (overall >= 82) return fromLeague(rng.bool(0.7) ? rng.pick(TIER1_LEAGUES) : rng.pick(TIER2_LEAGUES))
+  if (overall >= 73) {
+    const r = rng.next()
+    if (r < 0.25) return fromLeague(rng.pick(TIER1_LEAGUES))
+    if (r < 0.65) return fromLeague(rng.pick(TIER2_LEAGUES))
+    return generic()
+  }
+  return rng.bool(0.75) ? generic() : fromLeague(rng.pick(TIER2_LEAGUES))
 }
 
 export interface GenPlayerOpts {
@@ -130,8 +146,7 @@ export function generatePlayer(opts: GenPlayerOpts): Player {
     nationality: namePoolNation.id,
     position,
     age,
-    club: `${rng.pick(CLUB_PLACES)} ${rng.pick(CLUB_PREFIXES)}`,
-    clubLeague: pickLeague(overall, rng),
+    ...assignClub(namePoolNation.id, overall, rng),
     ratings,
     overall,
     potential,

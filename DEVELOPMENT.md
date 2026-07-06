@@ -231,6 +231,19 @@ Audit closure + the "alternate football history" layer:
   timeline, many managers.
 - Golden Boot: your tournament top scorer named when a finals concludes.
 
+### Milestone 12 — the realism pass (done)
+- Club football realism (`data/leagues.ts` + `playerGen.assignClub`): 15 named
+  leagues with trademark-safe club pools ("Mersey Rovers", "Milano Rossoneri",
+  "Buenos Aires Xeneize"...). Assignment is nationality-aware: big-five nations
+  keep ~80% of players domestic; exporter nations (BRA/ARG/NED/POR/MEX/USA/JPN)
+  send stars to the elite leagues and keep depth home; minnows export their
+  best. Scouting coverage inherits the richer league map automatically.
+- The weeks between windows are alive: Club Watch (2 dispatches/week following
+  YOUR players at their clubs — goals, clean sheets, bench worries, form
+  wobbles, driven by real form/playing-time), club-duty injuries with news
+  (the call every international manager dreads), and a "⏩ To next event"
+  fast-forward that stops at matches, deadlines, sackings, offers, or big news.
+
 ### Not yet built (next milestones)
 1. Confederation-specific qualifying formats (league/hex/group variants) and
    inter-confederation playoffs.
