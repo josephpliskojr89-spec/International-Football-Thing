@@ -15,11 +15,14 @@ import { generateManagerPool } from '@/engine/playerGen'
 import { cycleObjective } from '@/engine/manager'
 import {
   createTournament,
-  managerTie,
+  managerStep,
   resolveTournamentRound,
   decide,
   roundName,
   totalRounds,
+  stepWeeks,
+  groupStepCount,
+  inGroupStage,
   type TieResult,
 } from '@/engine/tournament'
 import { RNG, deriveSeed, hashStr } from '@/engine/rng'
@@ -29,7 +32,6 @@ import {
   windowAtWeek,
   fixtureKey,
   tournamentForYear,
-  tournamentRoundAtWeek,
   TOURNAMENT_DEADLINE_WEEK,
 } from '@/data/windows'
 import type { Tournament, Trophy } from '@/engine/types'
@@ -55,6 +57,7 @@ export type Route =
   | 'rankings'
   | 'legacy'
   | 'offers'
+  | 'final-whistle'
 
 interface GameState {
   route: Route
@@ -562,11 +565,11 @@ function resolveFriendly(career: Career): { next: Career; result: MatchResult } 
 function resolveTournament(career: Career): { next: Career; result: MatchResult } | null {
   const t = career.tournament
   if (!t || t.champion) return null
-  const mt = managerTie(t)
-  if (!mt) return null
+  const ms = managerStep(t)
+  if (!ms) return null
 
-  const opponent = ALL_NATIONS_BY_ID[mt.opponentId]
-  const isHome = mt.home // a/b orientation of the tie (seeding), not the venue
+  const opponent = ALL_NATIONS_BY_ID[ms.opponentId]
+  const isHome = ms.home // a/b orientation of the pairing, not the venue
   // Venue: finals are neutral ground unless one side is the World Cup host.
   const iHost = t.kind === 'WORLD_CUP' && t.hostId === career.managerNationId
   const oppHosts = t.kind === 'WORLD_CUP' && t.hostId === opponent.id
@@ -579,19 +582,21 @@ function resolveTournament(career: Career): { next: Career; result: MatchResult 
 
   const { players, aftermathNews } = applySquadAfterMatch(career, result, isHome, true)
 
-  // Build the tie result in the tie's a/b orientation (aGoals = home goals here,
-  // because the team built as "home" is always the tie's a-side).
   const myRating = ratingOf(career.world, career.managerNationId)
   const oppRating = ratingOf(career.world, opponent.id)
-  const tieResult: TieResult = decide(
-    mt.tie.aId,
-    mt.tie.bId,
-    result.homeGoals,
-    result.awayGoals,
-    isHome ? myRating : oppRating,
-    isHome ? oppRating : myRating,
-    deriveSeed(seed, 7),
-  )
+  // Group games can end level; knockout ties go to penalties.
+  const tieResult: TieResult =
+    ms.phase === 'GROUP'
+      ? { aGoals: isHome ? result.homeGoals : result.awayGoals, bGoals: isHome ? result.awayGoals : result.homeGoals, winnerId: '', pens: false }
+      : decide(
+          isHome ? career.managerNationId : opponent.id,
+          isHome ? opponent.id : career.managerNationId,
+          result.homeGoals,
+          result.awayGoals,
+          isHome ? myRating : oppRating,
+          isHome ? oppRating : myRating,
+          deriveSeed(seed, 7),
+        )
 
   const mine = isHome ? result.homeGoals : result.awayGoals
   const theirs = isHome ? result.awayGoals : result.homeGoals
@@ -609,52 +614,68 @@ function resolveTournament(career: Career): { next: Career; result: MatchResult 
 // Finals ties hit the world ratings hardest — this is where eras shift.
 function stepTournament(career: Career, managerResult: TieResult | null): Career {
   const t = career.tournament!
-  const newT = resolveTournamentRound(t, managerResult, career.seed, career.season, career.world)
-  const playedRound = newT.rounds[t.roundIndex] ?? []
-  const world = applyResults(
-    career.world,
-    playedRound.map((tie) => ({
-      homeId: tie.aId,
-      awayId: tie.bId,
-      hg: tie.aGoals ?? 0,
-      ag: tie.bGoals ?? 0,
-      neutral: true,
-      shootout: tie.pens,
-      shootoutWinnerId: tie.pens ? tie.winnerId ?? undefined : undefined,
-    })),
-    'finals',
-  )
+  const wasGroups = inGroupStage(t)
+  const { t: newT, results } = resolveTournamentRound(t, managerResult, career.seed, career.season, career.world)
+  const world = applyResults(career.world, results, 'finals')
   const news: NewsItem[] = []
   const history = [...career.history]
   let trophies = career.trophies
   let reputation = career.reputation
   let lastWcOutcome = career.lastWcOutcome
-  const rounds = totalRounds(newT.field.length)
-  const rName = roundName(newT.kind, t.roundIndex, rounds)
+  const koRounds = totalRounds(newT.groups ? 8 : newT.field.length)
+  const koIndex = t.roundIndex - groupStepCount(t)
+  const rName = wasGroups ? `Group stage` : roundName(newT.kind, koIndex, koRounds)
 
-  // Drama desk: shocks (a much lower-rated side dumping out a favorite) and
-  // the holders going out always make the front page.
+  // Drama desk: shocks and the holders going out always make the front page.
   const holders = [...career.history].reverse().find((h) => h.type === 'WORLD_CUP')?.nationId
   let shocks = 0
-  for (const tie of playedRound) {
-    if (!tie.winnerId) continue
-    const loserId = tie.winnerId === tie.aId ? tie.bId : tie.aId
-    if (loserId === career.managerNationId || tie.winnerId === career.managerNationId) continue
-    const upset = ratingOf(career.world, tie.winnerId) < ratingOf(career.world, loserId) - 6
+  for (const r of results) {
+    const decisive = r.shootout ? r.shootoutWinnerId : r.hg > r.ag ? r.homeId : r.hg < r.ag ? r.awayId : null
+    if (!decisive) continue
+    const loserId = decisive === r.homeId ? r.awayId : r.homeId
+    if (loserId === career.managerNationId || decisive === career.managerNationId) continue
+    if (wasGroups) continue // group games churn; the table tells the story
+    const upset = ratingOf(career.world, decisive) < ratingOf(career.world, loserId) - 6
     if (newT.kind === 'WORLD_CUP' && holders && loserId === holders) {
       news.push(mkStoreNews(`holders-out-${career.season}`, career, 'SHOCK', 0.8,
-        `The holders are OUT: ${ALL_NATIONS_BY_ID[loserId].name} fall to ${ALL_NATIONS_BY_ID[tie.winnerId].name} in the ${rName}${tie.pens ? ' on penalties' : ''}.`))
+        `The holders are OUT: ${ALL_NATIONS_BY_ID[loserId].name} fall to ${ALL_NATIONS_BY_ID[decisive].name} in the ${rName}${r.shootout ? ' on penalties' : ''}.`))
     } else if (upset && shocks < 2) {
       shocks++
       news.push(mkStoreNews(`shock-${career.season}-${t.roundIndex}-${shocks}`, career, 'SHOCK', 0.65,
-        `Shock in the ${rName}: ${ALL_NATIONS_BY_ID[tie.winnerId].name} dump out ${ALL_NATIONS_BY_ID[loserId].name}${tie.pens ? ` ${tie.pensA}–${tie.pensB} on penalties` : ` ${tie.aGoals}–${tie.bGoals}`}.`))
+        `Shock in the ${rName}: ${ALL_NATIONS_BY_ID[decisive].name} dump out ${ALL_NATIONS_BY_ID[loserId].name}.`))
+    }
+  }
+
+  // Group-stage storytelling: where you stand, and what the last matchday needs.
+  if (wasGroups && newT.inField && newT.groups) {
+    const gi = newT.groups.findIndex((g) => g.teams.includes(career.managerNationId))
+    const standings = newT.groups[gi].standings
+    const pos = standings.findIndex((st) => st.nationId === career.managerNationId)
+    if (newT.groupMatchday === 2 && !newT.eliminated) {
+      const me = standings[pos]
+      const third = standings[2]
+      const secure = pos <= 1 && me.pts - third.pts >= 4
+      news.push(mkStoreNews(`gs-scenario-${career.season}`, career, 'GROUP_STAGE', 0.85,
+        secure
+          ? `One matchday left and you're THROUGH — ${ordinalPos(pos + 1)} in Group ${'ABCD'[gi]} with daylight below. Rotate? Rest legs? Your call.`
+          : pos <= 1
+            ? `Top-two going into the final matchday, but it's tight in Group ${'ABCD'[gi]}. Win and you're safe. Slip, and the mathematics get cruel.`
+            : `You're ${ordinalPos(pos + 1)} in Group ${'ABCD'[gi]} with one game left. Win big — and pray someone does you a favor.`))
+    }
+    if (newT.groupMatchday >= 3) {
+      news.push(mkStoreNews(`gs-verdict-${career.season}`, career, 'GROUP_STAGE', newT.eliminated ? 0.95 : 0.9,
+        newT.eliminated
+          ? `It's over. ${ALL_NATIONS_BY_ID[career.managerNationId].name} finish ${ordinalPos(pos + 1)} in Group ${'ABCD'[gi]} and are OUT of the ${newT.name} at the group stage. The inquest begins.`
+          : `${ALL_NATIONS_BY_ID[career.managerNationId].name} are through to the quarter-finals${pos === 0 ? ' as group winners' : ' in second place'}. Now it's knockout football.`))
+      if (newT.kind === 'WORLD_CUP' && newT.eliminated) lastWcOutcome = 'R16'
     }
   }
 
   if (newT.champion) {
     const champ = ALL_NATIONS_BY_ID[newT.champion]
     const won = newT.champion === career.managerNationId
-    const finalTie = playedRound[0]
+    const finalRound = newT.rounds[newT.rounds.length - 1]
+    const finalTie = finalRound?.[0]
     const runnerUpId = finalTie ? (finalTie.winnerId === finalTie.aId ? finalTie.bId : finalTie.aId) : null
     const potm = playerOfTheTournament(career, newT.champion)
     news.push({
@@ -670,7 +691,7 @@ function stepTournament(career: Career, managerResult: TieResult | null): Career
     if (won) trophies = [...trophies, { kind: newT.kind, name: newT.name, season: career.season } as Trophy]
     if (won) reputation = clampRep(career.reputation + (newT.kind === 'WORLD_CUP' ? 25 : 12))
     if (newT.kind === 'WORLD_CUP' && newT.inField) {
-      lastWcOutcome = won ? 'WON' : career.managerNationId === runnerUpId ? 'FINAL' : career.lastWcOutcome
+      lastWcOutcome = won ? 'WON' : career.managerNationId === runnerUpId ? 'FINAL' : lastWcOutcome
     }
     history.push({
       season: career.season,
@@ -679,10 +700,10 @@ function stepTournament(career: Career, managerResult: TieResult | null): Career
       nationId: newT.champion,
       managerMoment: won,
     })
-  } else if (newT.eliminated && !t.eliminated) {
+  } else if (newT.eliminated && !t.eliminated && !wasGroups) {
     if (newT.kind === 'WORLD_CUP') {
-      const fromEnd = rounds - 1 - t.roundIndex
-      lastWcOutcome = fromEnd === 0 ? 'FINAL' : fromEnd === 1 ? 'SEMI' : fromEnd === 2 ? 'QUARTER' : 'R16'
+      const fromEnd = koRounds - 1 - koIndex
+      lastWcOutcome = fromEnd === 0 ? 'FINAL' : fromEnd === 1 ? 'SEMI' : 'QUARTER'
     }
     news.push({
       id: `out-${newT.kind}-${career.season}-${t.roundIndex}`,
@@ -697,6 +718,10 @@ function stepTournament(career: Career, managerResult: TieResult | null): Career
   return { ...career, tournament: newT, world, trophies, history, reputation, lastWcOutcome, news: [...news, ...career.news].slice(0, 80) }
 }
 
+function ordinalPos(n: number): string {
+  return ['', '1st', '2nd', '3rd', '4th'][n] ?? `${n}th`
+}
+
 // Calendar-driven tournament lifecycle: create the summer finals at its deadline,
 // and auto-resolve rounds the manager isn't playing (eliminated or didn't enter).
 function progressTournament(career: Career): Career {
@@ -709,8 +734,8 @@ function progressTournament(career: Career): Career {
   }
 
   const t = c.tournament
-  if (t && !t.champion && tournamentRoundAtWeek(c.week) === t.roundIndex && !managerTie(t)) {
-    c = stepTournament(c, null) // a round the manager isn't in — sim it
+  if (t && !t.champion && stepWeeks(t)[t.roundIndex] === c.week && !managerStep(t)) {
+    c = stepTournament(c, null) // a step the manager isn't playing — sim it
   }
   return c
 }
@@ -722,13 +747,22 @@ function worldCupInclusion(career: Career): boolean {
 
 function tournamentDrawNews(t: Tournament, career: Career): NewsItem {
   const me = ALL_NATIONS_BY_ID[career.managerNationId].name
-  const mt = managerTie(t)
-  const text = !t.inField
-    ? `The ${t.name} draw is made. ${me} aren't there — one to watch from home.`
-    : mt
-      ? `The ${t.name} is here! ${me} open against ${ALL_NATIONS_BY_ID[mt.opponentId].name} in the ${roundName(t.kind, 0, totalRounds(t.field.length))}.`
+  let text: string
+  if (!t.inField) {
+    text = `The ${t.name} draw is made. ${me} aren't there — one to watch from home.`
+  } else if (t.groups) {
+    const gi = t.groups.findIndex((g) => g.teams.includes(career.managerNationId))
+    const others = t.groups[gi].teams.filter((id) => id !== career.managerNationId).map((id) => ALL_NATIONS_BY_ID[id].name)
+    const avg = t.groups[gi].teams.reduce((s2, id) => s2 + ratingOf(career.world, id), 0) / 4
+    const toughest = t.groups.every((g) => g.teams.reduce((s3, id) => s3 + ratingOf(career.world, id), 0) / 4 <= avg + 0.01)
+    text = `The ${t.name} draw: ${me} land in Group ${'ABCD'[gi]} with ${others.join(', ')}.${toughest ? " The press are already calling it the GROUP OF DEATH." : ''}${t.hostId === career.managerNationId ? ' And every match at home.' : ''}`
+  } else {
+    const ms = managerStep(t)
+    text = ms
+      ? `The ${t.name} is here! ${me} open against ${ALL_NATIONS_BY_ID[ms.opponentId].name} in the ${ms.label}.`
       : `The ${t.name} is here.`
-  return { id: `draw-${t.kind}-${career.season}`, year: career.year, week: career.week, type: 'DRAW', magnitude: 0.8, text }
+  }
+  return { id: `draw-${t.kind}-${career.season}`, year: career.year, week: career.week, type: 'DRAW', magnitude: 0.85, text }
 }
 
 // A scout's verdict after a targeted look — confirmation or bust, keyed off the

@@ -1,6 +1,7 @@
 import { useGame } from '@/state/store'
 import { ALL_NATIONS_BY_ID } from '@/data/nations'
 import { roundName, totalRounds } from '@/engine/tournament'
+import type { TournamentGroup } from '@/engine/types'
 import { InCareerHeader } from '../components/InCareerHeader'
 import type { Tie } from '@/engine/types'
 
@@ -19,7 +20,7 @@ export function BracketScreen() {
     )
   }
 
-  const rounds = totalRounds(t.field.length)
+  const rounds = totalRounds(t.groups ? 8 : t.field.length)
   const me = career.managerNationId
   const champ = t.champion ? ALL_NATIONS_BY_ID[t.champion] : null
 
@@ -39,6 +40,8 @@ export function BracketScreen() {
           </div>
         )}
 
+        {t.groups && t.groups.map((g, gi) => <GroupCard key={gi} g={g} gi={gi} me={me} />)}
+
         {t.rounds.map((round, ri) => (
           <div key={ri}>
             <div className="sectionhdr">{roundName(t.kind, ri, rounds)}</div>
@@ -49,6 +52,41 @@ export function BracketScreen() {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function GroupCard({ g, gi, me }: { g: TournamentGroup; gi: number; me: string }) {
+  return (
+    <div>
+      <div className="sectionhdr">Group {'ABCD'[gi]}</div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="standrow standrow--head">
+          <span className="stand__pos">#</span>
+          <span className="stand__team">Team</span>
+          <span className="stand__num">P</span>
+          <span className="stand__num">W</span>
+          <span className="stand__num">D</span>
+          <span className="stand__num">L</span>
+          <span className="stand__num">GD</span>
+          <span className="stand__num stand__pts">Pts</span>
+        </div>
+        {g.standings.map((st, i) => {
+          const isMe = st.nationId === me
+          return (
+            <div key={st.nationId} className={`standrow ${isMe ? 'standrow--me' : ''}`} style={i === 1 ? { borderBottom: '2px dashed var(--warn)' } : undefined}>
+              <span className="stand__pos">{i + 1}</span>
+              <span className="stand__team">{ALL_NATIONS_BY_ID[st.nationId]?.name ?? st.nationId}</span>
+              <span className="stand__num">{st.p}</span>
+              <span className="stand__num">{st.w}</span>
+              <span className="stand__num">{st.d}</span>
+              <span className="stand__num">{st.l}</span>
+              <span className="stand__num">{st.gf - st.ga > 0 ? '+' : ''}{st.gf - st.ga}</span>
+              <span className="stand__num stand__pts">{st.pts}</span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

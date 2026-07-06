@@ -186,6 +186,20 @@ Audit closure + the "alternate football history" layer:
   approach — take the giant's job or stay loyal (small rep reward, fan love).
 - All-time World Cup roll of honour on Legacy (dynasties visible, yours starred).
 
+### Milestone 9 — the real World Cup + The Final Whistle (done)
+- World Cup group stage: seeded draw (pot 1 tops groups A-D, snaking pots), 4
+  groups of 4 with live tables, draws allowed, 3 matchdays (weeks 25/26/27)
+  then QF (A1vB2...) / SF / Final (29/30/32). Group-of-death call on the draw,
+  a final-matchday scenario beat after MD2 ("win and pray"), a group verdict
+  beat, host home-advantage throughout. Continental stays pure knockout; old
+  saves' in-flight knockouts keep the legacy schedule (`stepWeeks`).
+- Tournament engine reworked around STEPS (group MDs + KO rounds), resolvers
+  return per-match results for Elo/news; bracket screen renders group tables
+  above the knockout tree.
+- The Final Whistle (Legacy → button): your career rendered as a story —
+  epitaph, the numbers, nations managed, sackings survived, trophies in gold,
+  the moments they'll retell — with "one more cycle" or retire-for-real.
+
 ### Not yet built (next milestones)
 1. Confederation-specific qualifying formats (league/hex/group variants) and
    inter-confederation playoffs.

@@ -164,6 +164,12 @@ export interface Tie {
   pensB?: number
 }
 
+// A World Cup group: four teams, a live table, three matchdays.
+export interface TournamentGroup {
+  teams: string[] // seeded order (index drives the round-robin pairings)
+  standings: GroupStanding[]
+}
+
 export interface Tournament {
   kind: TournamentKind
   name: string
@@ -171,8 +177,11 @@ export interface Tournament {
   hostId: string | null // World Cup host (plays its ties at home); null = neutral everywhere
   inField: boolean // is the manager actually playing (else watching)
   field: string[] // seeded nation ids
-  rounds: Tie[][] // one entry per round; round 0 is the first round
-  roundIndex: number // next round to play
+  // World Cup group stage (null = straight knockout, e.g. Continental or legacy saves).
+  groups: TournamentGroup[] | null
+  groupMatchday: number // 0..3 — next group matchday to play (3 = groups complete)
+  rounds: Tie[][] // KNOCKOUT rounds only; round 0 is the first knockout round
+  roundIndex: number // next STEP to play (group matchdays count as steps too)
   champion: string | null
   eliminated: boolean // manager knocked out
 }

@@ -87,9 +87,11 @@ export function ScheduleScreen() {
           </button>
         ) : (
           <div className="card windowcard">
-            <div className="muted" style={{ fontSize: 12, letterSpacing: 1 }}>NEXT QUALIFIER · {upcoming.window.label}</div>
+            <div className="muted" style={{ fontSize: 12, letterSpacing: 1 }}>
+              {upcoming.fixture?.competitive === false ? 'NEXT FRIENDLY' : 'NEXT QUALIFIER'} · {upcoming.window.label}
+            </div>
             <div style={{ fontWeight: 800, fontSize: 17, marginTop: 4 }}>
-              {upOpp ? `vs ${upOpp.name}` : 'Qualifying'}
+              {upOpp ? `vs ${upOpp.name}` : upcoming.fixture?.competitive === false ? 'Friendly' : 'Qualifying'}
             </div>
             <div className="muted" style={{ fontSize: 13 }}>
               {upcoming.fixture ? `${upcoming.fixture.home ? 'Home' : 'Away'} · ` : ''}in {upcoming.weeksAway} week

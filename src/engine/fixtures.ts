@@ -11,13 +11,12 @@ import {
   isRegistrationClosed,
   fixtureKey,
   tournamentForYear,
-  tournamentRoundAtWeek,
   inTournamentBlock,
   qualifiersActiveInYear,
 } from '@/data/windows'
 import { ALL_NATIONS } from '@/data/nations'
 import { managerFixture } from './campaign'
-import { managerTie, roundName, totalRounds } from './tournament'
+import { managerStep, stepWeeks } from './tournament'
 import { ratingOf } from './world'
 import { RNG, deriveSeed, hashStr } from './rng'
 
@@ -74,21 +73,21 @@ export type CurrentMatch =
 export function currentMatch(career: Career): CurrentMatch | null {
   const t = career.tournament
   if (t && !t.champion) {
-    if (tournamentRoundAtWeek(career.week) === t.roundIndex) {
-      const mt = managerTie(t)
-      if (mt) {
+    if (stepWeeks(t)[t.roundIndex] === career.week) {
+      const ms = managerStep(t)
+      if (ms) {
         return {
           type: 'TOURNAMENT',
-          opponentId: mt.opponentId,
-          home: mt.home,
+          opponentId: ms.opponentId,
+          home: ms.home,
           label: t.name,
-          round: roundName(t.kind, t.roundIndex, totalRounds(t.field.length)),
+          round: ms.label,
           // World Cup ties are neutral unless the manager hosts.
           neutral: !(t.kind === 'WORLD_CUP' && career.wcHostId === career.managerNationId),
         }
       }
     }
-    return null // finals running but no manager tie this week (eliminated/watching)
+    return null // finals running but no manager match this week (eliminated/watching)
   }
 
   const window = windowAtWeek(career.week)

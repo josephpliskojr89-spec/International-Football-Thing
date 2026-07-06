@@ -82,7 +82,7 @@ export function migrateCareer(raw: unknown): Career {
           }
         : initWorld(),
     qualifiedForWorldCup: !!c.qualifiedForWorldCup,
-    tournament: c.tournament ? { hostId: null, ...c.tournament } : null,
+    tournament: c.tournament ? { hostId: null, groups: null, groupMatchday: 3, ...c.tournament } : null,
     trophies: Array.isArray(c.trophies) ? c.trophies : [],
     wcHostId: c.wcHostId ?? null,
     history: Array.isArray(c.history) ? c.history : [],

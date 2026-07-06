@@ -12,6 +12,7 @@ import type { HistoryEntry } from '@/engine/types'
 // another timeline.
 export function LegacyScreen() {
   const career = useGame((s) => s.career)!
+  const go = useGame((s) => s.go)
   const nation = NATIONS_BY_ID[career.managerNationId]
   const rec = career.record
   const winPct = rec.p > 0 ? Math.round((rec.w / rec.p) * 100) : 0
@@ -157,6 +158,10 @@ export function LegacyScreen() {
             ))}
           </div>
         ))}
+
+        <button className="btn btn--block" onClick={() => go('final-whistle')} style={{ marginTop: 4 }}>
+          🎬 The Final Whistle — read your career as a story
+        </button>
       </div>
     </div>
   )
