@@ -154,6 +154,14 @@ export function matchStory(result: MatchResult, managerIsHome: boolean, week?: n
     lines.push(`${result.motm.name} was the best player on the pitch, and it wasn't close.`)
   }
 
+  if (result.extraTime) {
+    lines.push(
+      result.shootout
+        ? `Ninety minutes couldn't split them; neither could thirty more. It went to penalties — ${result.shootout.homePens}–${result.shootout.awayPens} — the loneliest walk in football, taken ${result.shootout.kicks.length} times.`
+        : `It took extra time — half an hour on screaming legs — to find the difference.`,
+    )
+  }
+
   const body = lines.join(' ')
   // The opener always begins with a team name — keep it capitalized after the
   // weather clause ("On a freezing night, England came from behind...").

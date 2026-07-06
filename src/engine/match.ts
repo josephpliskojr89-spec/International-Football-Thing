@@ -36,11 +36,21 @@ export interface PlayerMatchRating {
   goals: number
 }
 
+export interface ShootoutKick {
+  side: 'home' | 'away'
+  taker: string
+  scored: boolean
+}
+
 export interface MatchResult {
   homeName: string
   awayName: string
   homeGoals: number
   awayGoals: number
+  homeGoalsHT: number // the half-time score — comebacks are simulated, not narrated
+  awayGoalsHT: number
+  extraTime?: boolean // knockout only: 30 more minutes were needed
+  shootout?: { kicks: ShootoutKick[]; homePens: number; awayPens: number; winner: 'home' | 'away' }
   xgHome: number
   xgAway: number
   possessionHome: number // 0..100
@@ -63,6 +73,28 @@ interface ZoneStrengths {
   defense: number
 }
 
+// The style wheel (Step 2b): football's rock-paper-scissors, small but real.
+// HighPress smothers Possession's build-up; Possession starves Direct sides of
+// the ball; Direct's long game bypasses nobody better than a Counter block that
+// needs YOU to overcommit; Counter feasts on the space behind a HighPress.
+// Balanced sits outside the wheel. Winner ~+5% attack/+3% midfield, loser -4%/-3%.
+const STYLE_WHEEL: Partial<Record<PlayStyle, PlayStyle>> = {
+  HighPress: 'Possession',
+  Possession: 'Direct',
+  Direct: 'Counter',
+  Counter: 'HighPress',
+}
+
+export function styleMatchup(mine: PlayStyle, theirs: PlayStyle): { edge: 1 | 0 | -1; note: string } {
+  if (STYLE_WHEEL[mine] === theirs) {
+    return { edge: 1, note: `${mine} historically gets the better of ${theirs}` }
+  }
+  if (STYLE_WHEEL[theirs] === mine) {
+    return { edge: -1, note: `${theirs} is the classic answer to ${mine} — be ready to adapt` }
+  }
+  return { edge: 0, note: 'No stylistic edge either way — this one is about the players' }
+}
+
 // Per-style, per-zone nudges (Step 2 StyleModifier). Deliberately small.
 const STYLE_MODS: Record<PlayStyle, ZoneStrengths> = {
   Balanced: { attack: 1.0, midfield: 1.0, defense: 1.0 },
@@ -75,26 +107,50 @@ const STYLE_MODS: Record<PlayStyle, ZoneStrengths> = {
 export function simulateMatch(home: MatchTeam, away: MatchTeam, seed: number): MatchResult {
   const rng = new RNG(seed >>> 0)
 
-  const zHome = finalZones(home)
-  const zAway = finalZones(away)
+  // Step 2b — the style wheel tilts both sides before anything else.
+  const wheel = styleMatchup(home.style, away.style)
+  const zHome = applyWheel(finalZones(home), wheel.edge)
+  const zAway = applyWheel(finalZones(away), -wheel.edge as 1 | 0 | -1)
+
+  // Step 2c — discipline & injuries are rolled FIRST, with minutes, and they
+  // hurt TODAY: a red card weakens the ten men for every remaining minute; a
+  // player limping off costs his side a little for the rest of the match.
+  const injuries = rollInjuries(home, away, rng)
+  const cards = rollCards(home, away, rng)
+  impair(zHome, injuries, cards, 'home')
+  impair(zAway, injuries, cards, 'away')
 
   // Step 3 — midfield matchup -> edge for each side (fulcrum).
   const edgeHome = midfieldEdge(zHome.midfield / zAway.midfield)
   const edgeAway = midfieldEdge(zAway.midfield / zHome.midfield)
 
-  // Step 4 — xG from attack-vs-defense delta, scaled by midfield edge.
-  const xgHome = clampFloor(MATCH.baseChances * (zHome.attack / zAway.defense) * edgeHome)
-  const xgAway = clampFloor(MATCH.baseChances * (zAway.attack / zHome.defense) * edgeAway)
+  // Steps 4+5, TWICE — the match is two halves, and the scoreboard at the
+  // break changes the second: trailing sides chase, leading sides protect.
+  const xgH1home = clampFloor(0.5 * MATCH.baseChances * (zHome.attack / zAway.defense) * edgeHome)
+  const xgH1away = clampFloor(0.5 * MATCH.baseChances * (zAway.attack / zHome.defense) * edgeAway)
+  const homeGoalsHT = poisson(rng, xgH1home)
+  const awayGoalsHT = poisson(rng, xgH1away)
 
-  // Step 5 — independent Poisson per side.
-  const homeGoals = poisson(rng, xgHome)
-  const awayGoals = poisson(rng, xgAway)
+  const state = scoreState(homeGoalsHT, awayGoalsHT)
+  const xgH2home = clampFloor(0.5 * MATCH.baseChances * ((zHome.attack * state.homeAtt) / (zAway.defense * state.awayDef)) * edgeHome)
+  const xgH2away = clampFloor(0.5 * MATCH.baseChances * ((zAway.attack * state.awayAtt) / (zHome.defense * state.homeDef)) * edgeAway)
+  const homeGoalsH2 = poisson(rng, xgH2home)
+  const awayGoalsH2 = poisson(rng, xgH2away)
 
-  // Step 6 — back-fill narrative (does not affect the result).
-  const scorersHome = assignScorers(home, homeGoals, rng)
-  const scorersAway = assignScorers(away, awayGoals, rng)
-  const injuries = rollInjuries(home, away, rng)
-  const cards = rollCards(home, away, rng)
+  const homeGoals = homeGoalsHT + homeGoalsH2
+  const awayGoals = awayGoalsHT + awayGoalsH2
+  const xgHome = xgH1home + xgH2home
+  const xgAway = xgH1away + xgH2away
+
+  // Step 6 — back-fill the goals onto real feet, half by half.
+  const scorersHome = [
+    ...assignScorers(home, homeGoalsHT, rng, 1, 45),
+    ...assignScorers(home, homeGoalsH2, rng, 46, 90),
+  ].sort((a, b) => a.minute - b.minute)
+  const scorersAway = [
+    ...assignScorers(away, awayGoalsHT, rng, 1, 45),
+    ...assignScorers(away, awayGoalsH2, rng, 46, 90),
+  ].sort((a, b) => a.minute - b.minute)
 
   const events: MatchEventLog[] = [
     ...scorersHome.map((s) => ({
@@ -126,6 +182,8 @@ export function simulateMatch(home: MatchTeam, away: MatchTeam, seed: number): M
     awayName: away.name,
     homeGoals,
     awayGoals,
+    homeGoalsHT,
+    awayGoalsHT,
     xgHome: round1(xgHome),
     xgAway: round1(xgAway),
     possessionHome,
@@ -137,6 +195,42 @@ export function simulateMatch(home: MatchTeam, away: MatchTeam, seed: number): M
     ratingsAway,
     zones: { home: zHome, away: zAway, midfieldEdgeHome: round2(edgeHome) },
   }
+}
+
+// The style-wheel tilt, applied to a whole side's zones.
+function applyWheel(z: ZoneStrengths, edge: 1 | 0 | -1): ZoneStrengths {
+  if (edge === 0) return z
+  const att = edge === 1 ? 1.05 : 0.96
+  const mid = edge === 1 ? 1.03 : 0.97
+  return { attack: z.attack * att, midfield: z.midfield * mid, defense: z.defense }
+}
+
+// In-match harm, weighted by how much of the match was left when it happened.
+// A red card leaves ten men: the attack suffers most, the shape holds better.
+function impair(z: ZoneStrengths, injuries: MatchEventLog[], cards: MatchEventLog[], side: 'home' | 'away'): void {
+  for (const e of [...injuries, ...cards]) {
+    if (e.side !== side) continue
+    const remaining = Math.max(0, (90 - e.minute) / 90)
+    if (e.type === 'RED') {
+      z.attack *= 1 - 0.3 * remaining
+      z.midfield *= 1 - 0.2 * remaining
+      z.defense *= 1 - 0.12 * remaining
+    } else if (e.type === 'INJURY') {
+      z.attack *= 1 - 0.06 * remaining
+      z.midfield *= 1 - 0.06 * remaining
+      z.defense *= 1 - 0.06 * remaining
+    }
+  }
+}
+
+// The second half belongs to the scoreboard: trailing sides throw men forward
+// (and leave gaps), leading sides drop off and protect what they have.
+function scoreState(hGoals: number, aGoals: number): { homeAtt: number; homeDef: number; awayAtt: number; awayDef: number } {
+  if (hGoals === aGoals) return { homeAtt: 1.02, homeDef: 1, awayAtt: 1.02, awayDef: 1 }
+  const deficit = Math.min(2, Math.abs(hGoals - aGoals))
+  const chaseAtt = 1 + 0.1 * deficit
+  if (hGoals < aGoals) return { homeAtt: chaseAtt, homeDef: 0.95, awayAtt: 0.93, awayDef: 1.06 }
+  return { homeAtt: 0.93, homeDef: 1.06, awayAtt: chaseAtt, awayDef: 0.95 }
 }
 
 // ---- Step 1 + 2: zone strengths with modifiers ----
@@ -234,7 +328,7 @@ interface Scorer {
   minute: number
 }
 
-function assignScorers(team: MatchTeam, goals: number, rng: RNG): Scorer[] {
+function assignScorers(team: MatchTeam, goals: number, rng: RNG, minMinute = 1, maxMinute = 90): Scorer[] {
   if (goals === 0) return []
   const onField = Object.values(team.playerBySlot).filter((p): p is Player => !!p)
   if (onField.length === 0) return [] // no XI selected — no named scorers
@@ -261,7 +355,7 @@ function assignScorers(team: MatchTeam, goals: number, rng: RNG): Scorer[] {
         break
       }
     }
-    scorers.push({ playerId: chosen.id, name: chosen.name, minute: rng.int(1, 90) })
+    scorers.push({ playerId: chosen.id, name: chosen.name, minute: rng.int(minMinute, maxMinute) })
   }
   return scorers.sort((a, b) => a.minute - b.minute)
 }
@@ -373,4 +467,102 @@ function round1(x: number): number {
 }
 function round2(x: number): number {
   return Math.round(x * 100) / 100
+}
+
+
+// ---- Knockout settlement: extra time, then the shootout ----
+// Thirty more minutes at ~2/3 intensity on tired legs, score-state aware; if
+// still level, penalties are taken KICK BY KICK — real takers, real keeper,
+// sudden death if needed. The sequence returns for the UI to relive.
+export function settleKnockout(
+  home: MatchTeam,
+  away: MatchTeam,
+  base: MatchResult,
+  seed: number,
+): MatchResult {
+  if (base.homeGoals !== base.awayGoals) return base
+  const rng = new RNG(deriveSeedLocal(seed, 0xe7))
+
+  const zHome = finalZones(home)
+  const zAway = finalZones(away)
+  const edgeHome = midfieldEdge(zHome.midfield / zAway.midfield)
+  const edgeAway = midfieldEdge(zAway.midfield / zHome.midfield)
+  // A third of a match, minus tired legs.
+  const xgEtHome = Math.max(0.12, 0.33 * 0.92 * MATCH.baseChances * (zHome.attack / zAway.defense) * edgeHome)
+  const xgEtAway = Math.max(0.12, 0.33 * 0.92 * MATCH.baseChances * (zAway.attack / zHome.defense) * edgeAway)
+  const etHome = poisson(rng, xgEtHome)
+  const etAway = poisson(rng, xgEtAway)
+
+  const etScorersHome = assignScorers(home, etHome, rng, 91, 120)
+  const etScorersAway = assignScorers(away, etAway, rng, 91, 120)
+  const etEvents: MatchEventLog[] = [
+    ...etScorersHome.map((sc) => ({ minute: sc.minute, type: 'GOAL' as const, side: 'home' as const, playerId: sc.playerId, playerName: sc.name })),
+    ...etScorersAway.map((sc) => ({ minute: sc.minute, type: 'GOAL' as const, side: 'away' as const, playerId: sc.playerId, playerName: sc.name })),
+  ]
+
+  let result: MatchResult = {
+    ...base,
+    extraTime: true,
+    homeGoals: base.homeGoals + etHome,
+    awayGoals: base.awayGoals + etAway,
+    scorersHome: [...base.scorersHome, ...etScorersHome.map((sc) => ({ name: sc.name, minute: sc.minute }))],
+    scorersAway: [...base.scorersAway, ...etScorersAway.map((sc) => ({ name: sc.name, minute: sc.minute }))],
+    events: [...base.events, ...etEvents].sort((a, b) => a.minute - b.minute),
+  }
+  if (result.homeGoals !== result.awayGoals) return result
+
+  // The shootout. Takers ranked by nerve and finish; keepers earn their saves.
+  const takers = (t: MatchTeam) =>
+    Object.values(t.playerBySlot)
+      .filter((p): p is Player => !!p && p.position !== 'GK')
+      .sort((a, b) => b.ratings.finishing + b.ratings.mental - (a.ratings.finishing + a.ratings.mental))
+  const gk = (t: MatchTeam) => Object.values(t.playerBySlot).find((p): p is Player => !!p && p.position === 'GK')
+
+  const hTakers = takers(home)
+  const aTakers = takers(away)
+  const hGk = gk(away)?.ratings.goalkeeping ?? 60 // the keeper HOME shoots against
+  const aGk = gk(home)?.ratings.goalkeeping ?? 60
+  const kicks: ShootoutKick[] = []
+  let hPens = 0
+  let aPens = 0
+
+  const take = (taker: Player, oppGk: number): boolean => {
+    const skill = (taker.ratings.finishing + taker.ratings.mental) / 2
+    const p = Math.max(0.55, Math.min(0.93, 0.76 + (skill - 70) * 0.004 - (oppGk - 70) * 0.0035 + (taker.form - 60) * 0.001))
+    return rng.next() < p
+  }
+
+  // Five rounds, stopping early when mathematically decided; then sudden death.
+  for (let round = 0; round < 5; round++) {
+    const ht = hTakers[round % hTakers.length]
+    const hScored = take(ht, hGk)
+    if (hScored) hPens++
+    kicks.push({ side: 'home', taker: ht.name, scored: hScored })
+    if (aPens - hPens > 5 - round - 1 || hPens - aPens > 5 - round) break
+    const at = aTakers[round % aTakers.length]
+    const aScored = take(at, aGk)
+    if (aScored) aPens++
+    kicks.push({ side: 'away', taker: at.name, scored: aScored })
+    if (hPens - aPens > 5 - round - 1 || aPens - hPens > 5 - round - 1) break
+  }
+  // Sudden death: pair by pair until someone blinks.
+  let sd = 5
+  while (hPens === aPens) {
+    const ht = hTakers[sd % hTakers.length]
+    const hScored = take(ht, hGk)
+    if (hScored) hPens++
+    kicks.push({ side: 'home', taker: ht.name, scored: hScored })
+    const at = aTakers[sd % aTakers.length]
+    const aScored = take(at, aGk)
+    if (aScored) aPens++
+    kicks.push({ side: 'away', taker: at.name, scored: aScored })
+    sd++
+    if (sd > 30) break // impossible in practice; determinism guard
+  }
+  const winner: 'home' | 'away' = hPens > aPens ? 'home' : 'away'
+  return { ...result, shootout: { kicks, homePens: hPens, awayPens: aPens, winner } }
+}
+
+function deriveSeedLocal(base: number, part: number): number {
+  return (Math.imul((base >>> 0) ^ part, 0x01000193) >>> 0)
 }

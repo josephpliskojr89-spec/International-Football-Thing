@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { Career, NewsItem, Player, PlayStyle } from '@/engine/types'
 import { createCareer, autoFillLineup, type NewCareerInput } from '@/engine/career'
 import { advanceWeek as advanceWeekEngine } from '@/engine/calendar'
-import { simulateMatch, type MatchResult } from '@/engine/match'
+import { simulateMatch, settleKnockout, type MatchResult } from '@/engine/match'
 import { buildManagerTeam, buildOpponentTeam } from '@/engine/matchSetup'
 import { seeInPerson, targetedLook } from '@/engine/scouting'
 import { isSquadLocked, currentMatch, friendlyFixture, playoffFixture } from '@/engine/fixtures'
@@ -842,31 +842,49 @@ function resolveTournament(career: Career): { next: Career; result: MatchResult 
     }
   }
 
-  const myRating = ratingOf(career.world, career.managerNationId)
-  const oppRating = ratingOf(career.world, opponent.id)
-  // Group games can end level; knockout ties go to penalties.
+  // Group games can end level; knockout ties are SETTLED — thirty minutes of
+  // extra time on tired legs, then a kick-by-kick shootout if it must be.
+  let settled = result
+  if (ms.phase === 'KO' && result.homeGoals === result.awayGoals) {
+    settled = settleKnockout(home, away, result, deriveSeed(seed, 7))
+  }
+  const result2 = settled
+  const winnerSide = settled.shootout ? settled.shootout.winner : settled.homeGoals > settled.awayGoals ? 'home' : settled.homeGoals < settled.awayGoals ? 'away' : 'home'
+  const homeNationId = isHome ? career.managerNationId : opponent.id
+  const awayNationId = isHome ? opponent.id : career.managerNationId
   const tieResult: TieResult =
     ms.phase === 'GROUP'
       ? { aGoals: isHome ? result.homeGoals : result.awayGoals, bGoals: isHome ? result.awayGoals : result.homeGoals, winnerId: '', pens: false }
-      : decide(
-          isHome ? career.managerNationId : opponent.id,
-          isHome ? opponent.id : career.managerNationId,
-          result.homeGoals,
-          result.awayGoals,
-          isHome ? myRating : oppRating,
-          isHome ? oppRating : myRating,
-          deriveSeed(seed, 7),
-        )
+      : {
+          aGoals: settled.homeGoals,
+          bGoals: settled.awayGoals,
+          winnerId: winnerSide === 'home' ? homeNationId : awayNationId,
+          pens: !!settled.shootout,
+          pensA: settled.shootout?.homePens,
+          pensB: settled.shootout?.awayPens,
+        }
 
-  const mine = isHome ? result.homeGoals : result.awayGoals
-  const theirs = isHome ? result.awayGoals : result.homeGoals
+  const mine = isHome ? result2.homeGoals : result2.awayGoals
+  const theirs = isHome ? result2.awayGoals : result2.homeGoals
+  // Tournament football grinds: everyone who played loses a little edge, so a
+  // manager who never rotates arrives at the final on fumes.
+  const playersTired = players.map((p) =>
+    (isHome ? result2.ratingsHome : result2.ratingsAway).some((r) => r.playerId === p.id)
+      ? { ...p, form: Math.max(20, p.form - 2) }
+      : p,
+  )
   const next = stepTournament(
-    { ...career, players, tourneyCards, suspendedIds, record: updateRecord(career.record, mine, theirs), h2h: updateH2h(career.h2h, opponent.id, mine, theirs) },
+    { ...career, players: playersTired, tourneyCards, suspendedIds, record: updateRecord(career.record, mine, theirs), h2h: updateH2h(career.h2h, opponent.id, mine, theirs) },
     tieResult,
   )
   // The manager's own match also gets a headline.
-  const headline = matchHeadline(result, isHome, career.year, career.week, `the ${t.name}`)
-  return { next: { ...next, news: [headline, ...aftermathNews, ...next.news].slice(0, 80) }, result }
+  const context = settled.shootout
+    ? `the ${t.name} — ${settled.shootout.homePens}–${settled.shootout.awayPens} on penalties`
+    : settled.extraTime
+      ? `the ${t.name} after extra time`
+      : `the ${t.name}`
+  const headline = matchHeadline(result2, isHome, career.year, career.week, context)
+  return { next: { ...next, news: [headline, ...aftermathNews, ...next.news].slice(0, 80) }, result: result2 }
 }
 
 // Resolve the current finals round (manager result applied if given, rest

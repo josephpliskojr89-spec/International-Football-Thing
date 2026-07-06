@@ -285,6 +285,29 @@ Audit closure + the "alternate football history" layer:
 - Confirmed: the shared club universe already holds — world squads use the
   same nationality-aware club assignment as your pool.
 
+### Milestone 16 — the deep match engine (done)
+- Two-phase simulation: each match is two halves with the half-time score in
+  the result; the second half is SCORE-STATE coupled (trailing sides chase
+  +10%/goal and leave gaps, leaders drop off and protect). Comebacks and
+  collapses are now simulated, not narrated.
+- Cards & injuries hurt TODAY: rolled first with minutes; a red card weakens
+  the ten men for every remaining minute (attack -30%, shape less), an injury
+  costs ~6% team-wide for the remainder. Statistically verified: red-carded
+  sides concede more.
+- The style wheel: HighPress > Possession > Direct > Counter > HighPress
+  (Balanced outside it), ±5% attack/3% midfield. Surfaced pre-match as intel
+  ("Counter is the classic answer to HighPress — be ready to adapt") so the
+  Tactics tab becomes a per-opponent decision.
+- Tournament fatigue: everyone who plays a finals match loses 2 form — a
+  never-rotating XI arrives at the final on fumes (form already feeds zones).
+- REAL knockout settlement (`settleKnockout`): 30 minutes of extra time on
+  tired legs (score-state aware, scorers at 91-120'), then a KICK-BY-KICK
+  penalty shootout — real takers ranked by nerve+finish vs the real keeper,
+  five rounds with early mathematical stops, sudden death after. The full
+  kick sequence renders on the result screen (⚽/❌ per taker), verdicts show
+  WIN · PENS, headlines carry the shootout score, stories mourn "the
+  loneliest walk in football".
+
 ### Not yet built (next milestones)
 1. Confederation-specific qualifying formats (league/hex/group variants) and
    inter-confederation playoffs.

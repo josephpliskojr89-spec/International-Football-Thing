@@ -7,6 +7,7 @@ import { nationalManagerName } from '@/engine/manager'
 import { STYLE_LABELS } from '@/data/tactics'
 import type { MatchResult } from '@/engine/match'
 import { matchStory } from '@/engine/matchStory'
+import { styleMatchup } from '@/engine/match'
 
 export function MatchScreen() {
   const career = useGame((s) => s.career)!
@@ -93,6 +94,7 @@ export function MatchScreen() {
             </div>
           )}
           <DugoutLine career={career} oppId={opp.id} />
+          <StyleIntel mine={career.tactics.style} theirs={opp.tacticalIdentity} />
         </div>
 
         <div className="card">
@@ -139,6 +141,17 @@ function DugoutLine({ career, oppId }: { career: import('@/engine/types').Career
   )
 }
 
+// The style wheel, surfaced: your setup vs their known identity.
+function StyleIntel({ mine, theirs }: { mine: import('@/engine/types').PlayStyle; theirs: import('@/engine/types').PlayStyle }) {
+  const m = styleMatchup(mine, theirs)
+  if (m.edge === 0) return null
+  return (
+    <div style={{ fontSize: 12, marginTop: 4, color: m.edge === 1 ? 'var(--good)' : 'var(--warn)', fontWeight: 600 }}>
+      {m.edge === 1 ? '▲' : '⚠'} {m.note}.
+    </div>
+  )
+}
+
 function MatchResultView({
   result,
   managerIsHome,
@@ -152,8 +165,13 @@ function MatchResultView({
 }) {
   const mine = managerIsHome ? result.homeGoals : result.awayGoals
   const theirs = managerIsHome ? result.awayGoals : result.homeGoals
-  const verdict = mine > theirs ? 'WIN' : mine < theirs ? 'LOSS' : 'DRAW'
-  const verdictColor = mine > theirs ? 'var(--good)' : mine < theirs ? 'var(--bad)' : 'var(--warn)'
+  const wonShootout = result.shootout ? (result.shootout.winner === 'home') === managerIsHome : null
+  const verdict =
+    wonShootout !== null ? (wonShootout ? 'WIN · PENS' : 'LOSS · PENS') : mine > theirs ? 'WIN' : mine < theirs ? 'LOSS' : 'DRAW'
+  const verdictColor =
+    wonShootout !== null
+      ? wonShootout ? 'var(--good)' : 'var(--bad)'
+      : mine > theirs ? 'var(--good)' : mine < theirs ? 'var(--bad)' : 'var(--warn)'
 
   return (
     <div className="screen">
@@ -169,6 +187,7 @@ function MatchResultView({
             <div className="scoreline__team">{result.homeName}</div>
             <div className="scoreline__score">
               {result.homeGoals}–{result.awayGoals}
+              {result.extraTime && <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-faint)' }}>AET</div>}
             </div>
             <div className="scoreline__team">{result.awayName}</div>
           </div>
@@ -189,6 +208,24 @@ function MatchResultView({
             </div>
           </div>
         </div>
+
+        {result.shootout && (
+          <div className="card">
+            <div className="field-label">
+              Penalty shootout · {result.shootout.homePens}–{result.shootout.awayPens}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+              {result.shootout.kicks.map((k, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5 }}>
+                  <span style={{ opacity: (k.side === 'home') === managerIsHome ? 1 : 0.65 }}>
+                    {k.side === 'home' ? result.homeName : result.awayName} · {k.taker}
+                  </span>
+                  <span>{k.scored ? '⚽' : '❌'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="card" style={{ fontSize: 14, lineHeight: 1.6 }}>
           <div className="field-label">The story of the match</div>
