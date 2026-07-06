@@ -20,25 +20,34 @@ const HOME_EDGE = 2 // home side's effective rating bonus in expectation
 const K_QUALIFIER = 0.9
 const K_FINALS = 1.5 // knockout finals move ratings hardest
 const K_BACKGROUND = 0.7 // the world's own (unseen) qualifiers
+const K_FRIENDLY = 0.35 // friendlies barely register — that's the point of them
 const MARGIN_STEP = 0.25 // each goal of margin beyond 1 adds 25%, capped
 const MARGIN_CAP = 1.75
 const SHOOTOUT_SCORE = 0.6 // a shootout win counts as a 60:40 result, not a full win
 const RATING_FLOOR = 30
 const RATING_CEIL = 99
-const SEASON_REVERSION = 0.06 // 6% pull toward the static base each season
+const SEASON_REVERSION = 0.06 // 6% pull toward the (trend-shifted) base each season
+// Development trends: a bounded, mean-reverting random walk per nation. This is
+// the decades engine — a run of positive steps is a sleeping giant stirring, a
+// slow slide is a traditional power decaying. Bounded so Botswana never becomes
+// a perennial favorite; persistent enough that eras feel earned.
+const TREND_CAP = 7
+const TREND_PERSIST = 0.92 // how much of last season's trend carries over
+const TREND_NEWS_LEVEL = 4.5 // |trend| crossing this makes headlines
 
-export type ResultImportance = 'qualifier' | 'finals' | 'background'
+export type ResultImportance = 'qualifier' | 'finals' | 'background' | 'friendly'
 
 const K_BY_IMPORTANCE: Record<ResultImportance, number> = {
   qualifier: K_QUALIFIER,
   finals: K_FINALS,
   background: K_BACKGROUND,
+  friendly: K_FRIENDLY,
 }
 
 export function initWorld(): WorldState {
   const ratings: Record<string, number> = {}
   for (const n of ALL_NATIONS) ratings[n.id] = n.nationRating
-  return { ratings, seasonStartRanks: rankMap(ratings) }
+  return { ratings, seasonStartRanks: rankMap(ratings), trends: {} }
 }
 
 // Current dynamic rating, falling back to the static base for anything unknown
@@ -141,15 +150,44 @@ function rankMap(ratings: Record<string, number>): Record<string, number> {
   return out
 }
 
-// Season rollover: soft reversion toward the static base (a nation's footballing
-// culture reasserts itself over time), then snapshot ranks for movement arrows.
-export function seasonTick(world: WorldState): WorldState {
+// Season rollover: advance each nation's hidden development trend, then apply a
+// soft reversion toward its TREND-SHIFTED base — so where a nation "wants" to
+// be drifts over decades — and snapshot ranks for movement arrows. Returns any
+// era headlines (a giant stirring, a power in decline) for the news feed.
+export function seasonTick(
+  world: WorldState,
+  seed = 0,
+  season = 0,
+): { world: WorldState; eraNews: string[] } {
+  const rng = new RNG(deriveSeed(seed, season, 0x7e5d))
+  const trends: Record<string, number> = {}
+  const eraNews: string[] = []
+
+  for (const n of ALL_NATIONS) {
+    const prev = world.trends?.[n.id] ?? 0
+    // Big footballing cultures are structurally stable; smaller ones swing more.
+    const vol = 1.35 - n.footballCulture / 100 // culture 90 -> 0.45, culture 55 -> 0.8
+    const next = clampTrend(prev * TREND_PERSIST + rng.range(-vol, vol))
+    trends[n.id] = next
+    if (n.isPlayable && Math.abs(prev) < TREND_NEWS_LEVEL && Math.abs(next) >= TREND_NEWS_LEVEL) {
+      eraNews.push(
+        next > 0
+          ? `Something is building in ${n.name}: academies overflowing, a federation with a plan. The next decade could be theirs.`
+          : `Alarm bells in ${n.name}: an ageing structure, thin youth ranks. A once-sure thing is drifting.`,
+      )
+    }
+  }
+
   const ratings: Record<string, number> = {}
   for (const [id, r] of Object.entries(world.ratings)) {
-    const base = ALL_NATIONS_BY_ID[id]?.nationRating ?? r
+    const base = (ALL_NATIONS_BY_ID[id]?.nationRating ?? r) + (trends[id] ?? 0)
     ratings[id] = clampRating(r + (base - r) * SEASON_REVERSION)
   }
-  return { ratings, seasonStartRanks: rankMap(ratings) }
+  return { world: { ratings, seasonStartRanks: rankMap(ratings), trends }, eraNews }
+}
+
+function clampTrend(v: number): number {
+  return Math.max(-TREND_CAP, Math.min(TREND_CAP, v))
 }
 
 // ---- background football ----

@@ -91,7 +91,7 @@ function TieRow({ tie, me }: { tie: Tie; me: string }) {
       {side(tie.bId, b?.name, bWon, tie.bGoals)}
       {tie.pens && (
         <div className="faint" style={{ fontSize: 11, padding: '2px 12px 6px' }}>
-          decided on penalties
+          {tie.pensA !== undefined ? `${tie.pensA}–${tie.pensB} on penalties` : 'decided on penalties'}
         </div>
       )}
     </div>

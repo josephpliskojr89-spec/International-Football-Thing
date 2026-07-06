@@ -1,10 +1,12 @@
 import type { Career, ManagerStyle, Player } from './types'
 import { SAVE_VERSION, COACH_COUNT } from '@/data/constants'
 import { NATIONS_BY_ID } from '@/data/nations'
+import { displayYear } from '@/data/windows'
 import { FORMATIONS_BY_ID } from '@/data/formations'
 import type { PlayStyle } from './types'
 import { generateManagerPool } from './playerGen'
 import { createCampaign } from './campaign'
+import { pickWorldCupHost } from './tournament'
 import { initWorld } from './world'
 import { RNG, deriveSeed } from './rng'
 import { generateName } from './nameGen'
@@ -25,6 +27,8 @@ export function createCareer(input: NewCareerInput): Career {
   const seed = input.seed ?? makeSeed(input.managerName, input.nationId)
   const nation = NATIONS_BY_ID[input.nationId]
   const players = generateManagerPool(nation, seed)
+  const hostId = pickWorldCupHost(input.nationId, seed, 1)
+  const host = NATIONS_BY_ID[hostId] ?? { name: hostId }
 
   const formation = input.style.formation
   const lineup = autoFillLineup(players, formation, input.style)
@@ -56,6 +60,10 @@ export function createCareer(input: NewCareerInput): Career {
     qualifiedForWorldCup: false,
     tournament: null,
     trophies: [],
+    wcHostId: hostId,
+    history: [{ season: 1, type: 'HOST', text: `${host.name} awarded the ${displayYear(4)} World Cup`, nationId: hostId, managerMoment: hostId === input.nationId }],
+    legends: [],
+    record: { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0 },
     news: [
       {
         id: 'welcome',
@@ -64,6 +72,17 @@ export function createCareer(input: NewCareerInput): Career {
         type: 'APPOINTMENT',
         magnitude: 0.7,
         text: `${input.managerName.trim() || 'A new manager'} takes charge of ${nation.name}. The nation waits to see what kind of side they'll build.`,
+      },
+      {
+        id: 'host-initial',
+        week: 1,
+        year: 1,
+        type: 'HOST',
+        magnitude: hostId === input.nationId ? 1 : 0.6,
+        text:
+          hostId === input.nationId
+            ? `And one more thing: ${host.name} host the ${displayYear(4)} World Cup. Your first cycle ends at home, in front of everyone you know.`
+            : `This cycle's World Cup, ${displayYear(4)}, will be hosted by ${host.name}.`,
       },
     ],
   }
@@ -81,9 +100,11 @@ export function autoFillLineup(
   const used = new Set<string>()
 
   for (const slot of formation.slots) {
+    // Fit players first; if injuries have gutted the pool, field the walking
+    // wounded rather than leave a hole.
     const candidates = players
       .filter((p) => !used.has(p.id))
-      .map((p) => ({ p, score: slotScore(p, slot.position, style) }))
+      .map((p) => ({ p, score: slotScore(p, slot.position, style) - (p.injuredWeeks > 0 ? 1000 : 0) }))
       .sort((a, b) => b.score - a.score)
     const pick = candidates[0]?.p ?? null
     if (pick) used.add(pick.id)

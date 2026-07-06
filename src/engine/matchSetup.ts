@@ -19,12 +19,31 @@ const IDENTITY_FORMATION: Record<PlayStyle, string> = {
 }
 
 // Uses the career's persistent tactics (style + focal point) to build the team.
+// Injured starters are swapped for the best fit bench player in their position
+// at kickoff — a mid-tournament injury really costs you your man.
 export function buildManagerTeam(career: Career, isHome: boolean): MatchTeam {
   const nation = NATIONS_BY_ID[career.managerNationId]
   const playersById = Object.fromEntries(career.players.map((p) => [p.id, p]))
   const playerBySlot: Record<string, Player | null> = {}
+  const usedIds = new Set<string>()
   for (const slot of FORMATIONS_BY_ID[career.formation].slots) {
     playerBySlot[slot.id] = playersById[career.lineup[slot.id] ?? ''] ?? null
+    if (playerBySlot[slot.id]) usedIds.add(playerBySlot[slot.id]!.id)
+  }
+  const benchFit = career.bench
+    .map((id) => playersById[id])
+    .filter((p): p is Player => !!p && p.injuredWeeks === 0)
+  for (const slot of FORMATIONS_BY_ID[career.formation].slots) {
+    const starter = playerBySlot[slot.id]
+    if (starter && starter.injuredWeeks > 0) {
+      const sub = benchFit
+        .filter((p) => !usedIds.has(p.id))
+        .sort((a, b) => (b.position === slot.position ? b.overall + 12 : b.overall) - (a.position === slot.position ? a.overall + 12 : a.overall))[0]
+      if (sub) {
+        playerBySlot[slot.id] = sub
+        usedIds.add(sub.id)
+      }
+    }
   }
   return {
     nationId: nation.id,

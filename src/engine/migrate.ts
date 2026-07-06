@@ -75,11 +75,19 @@ export function migrateCareer(raw: unknown): Career {
     // (their world simply begins remembering from now on).
     world:
       c.world && typeof c.world.ratings === 'object'
-        ? { ratings: c.world.ratings, seasonStartRanks: c.world.seasonStartRanks ?? {} }
+        ? {
+            ratings: c.world.ratings,
+            seasonStartRanks: c.world.seasonStartRanks ?? {},
+            trends: c.world.trends ?? {},
+          }
         : initWorld(),
     qualifiedForWorldCup: !!c.qualifiedForWorldCup,
-    tournament: c.tournament ?? null,
+    tournament: c.tournament ? { hostId: null, ...c.tournament } : null,
     trophies: Array.isArray(c.trophies) ? c.trophies : [],
+    wcHostId: c.wcHostId ?? null,
+    history: Array.isArray(c.history) ? c.history : [],
+    legends: Array.isArray(c.legends) ? c.legends : [],
+    record: c.record ?? { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0 },
     news: Array.isArray(c.news) ? c.news : [],
   }
 }
@@ -116,5 +124,8 @@ function migratePlayer(raw: unknown): Player {
     leans: p.leans ?? {},
     eligibilityState: p.eligibilityState ?? 'ELIGIBLE',
     tiedNation: p.tiedNation ?? null,
+    injuredWeeks: p.injuredWeeks ?? 0,
+    caps: p.caps ?? 0,
+    intlGoals: p.intlGoals ?? 0,
   }
 }

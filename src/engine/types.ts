@@ -7,7 +7,8 @@ export type Position = 'GK' | 'DF' | 'MF' | 'FW'
 
 export type PlayStyle = 'Balanced' | 'Possession' | 'Counter' | 'Direct' | 'HighPress'
 
-export type EligibilityState = 'ELIGIBLE' | 'PROVISIONAL' | 'CAP_TIED'
+// LOST = he declared for the rival nation; he'll never play for you.
+export type EligibilityState = 'ELIGIBLE' | 'PROVISIONAL' | 'CAP_TIED' | 'LOST'
 
 // The eight-attribute model (canonical per Match Engine bible).
 export interface Ratings {
@@ -62,6 +63,11 @@ export interface Player {
   leans: Record<string, number> // hidden lean per eligible nation
   eligibilityState: EligibilityState
   tiedNation: string | null
+
+  // ---- availability & career record ----
+  injuredWeeks: number // 0 = fit; >0 = ruled out that many more weeks
+  caps: number // international appearances for YOUR nation
+  intlGoals: number // international goals for YOUR nation
 }
 
 export interface Nation {
@@ -137,6 +143,11 @@ export interface Campaign {
 export interface WorldState {
   ratings: Record<string, number> // nationId -> current dynamic rating (float)
   seasonStartRanks: Record<string, number> // nationId -> world rank at season start (movement arrows)
+  // Hidden long-arc development trend per nation (bounded, mean-reverting).
+  // The season reversion pulls toward base + trend, so a sustained positive
+  // trend is a sleeping giant stirring and a negative one is a power in
+  // structural decline — eras, not noise.
+  trends: Record<string, number>
 }
 
 // ---- Finals tournaments (Continental Championship / World Cup) ----
@@ -149,12 +160,15 @@ export interface Tie {
   bGoals: number | null
   winnerId: string | null
   pens: boolean // decided on penalties (draw after normal time)
+  pensA?: number // shootout score (present when pens)
+  pensB?: number
 }
 
 export interface Tournament {
   kind: TournamentKind
   name: string
   managerId: string
+  hostId: string | null // World Cup host (plays its ties at home); null = neutral everywhere
   inField: boolean // is the manager actually playing (else watching)
   field: string[] // seeded nation ids
   rounds: Tie[][] // one entry per round; round 0 is the first round
@@ -167,6 +181,35 @@ export interface Trophy {
   kind: TournamentKind
   name: string
   season: number
+}
+
+// One line of the World Football Almanac — the alternate history a save writes.
+export interface HistoryEntry {
+  season: number
+  type: 'WORLD_CUP' | 'CONTINENTAL' | 'FOREIGN_CONTINENTAL' | 'QUALIFIED' | 'MISSED' | 'POTY' | 'LEGEND' | 'HOST'
+  text: string
+  nationId?: string // principal nation (champion / host / your nation)
+  managerMoment?: boolean // it happened to YOU — highlighted in the almanac
+}
+
+// A retired great of YOUR nation, remembered forever.
+export interface Legend {
+  name: string
+  position: Position
+  caps: number
+  goals: number
+  retiredSeason: number
+  peakOverall: number
+}
+
+// The manager's aggregate competitive record.
+export interface ManagerRecord {
+  p: number
+  w: number
+  d: number
+  l: number
+  gf: number
+  ga: number
 }
 
 export interface NewsItem {
@@ -202,11 +245,15 @@ export interface Career {
   bench: string[] // registered squad players not in the XI (the subs)
   formation: string
   playedFixtures: string[] // fixtureKey()s already played, to avoid replays
-  campaign: Campaign // the World Cup qualifying campaign
+  campaign: Campaign // the World Cup qualifying campaign (active in cycle years 2-3)
   world: WorldState // dynamic nation ratings + rankings (the world's memory)
   qualifiedForWorldCup: boolean // result of the most recent qualifying campaign
   tournament: Tournament | null // the active summer finals tournament, if any
   trophies: Trophy[] // honours won
+  wcHostId: string | null // this cycle's World Cup host (auto-qualifies, home ties)
+  history: HistoryEntry[] // the World Football Almanac (append-only)
+  legends: Legend[] // retired greats of your nation
+  record: ManagerRecord // your all-time competitive record
 
   news: NewsItem[]
 }

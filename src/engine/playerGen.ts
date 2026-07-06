@@ -149,6 +149,9 @@ export function generatePlayer(opts: GenPlayerOpts): Player {
     leans,
     eligibilityState: 'ELIGIBLE',
     tiedNation: null,
+    injuredWeeks: 0,
+    caps: 0,
+    intlGoals: 0,
   }
 }
 

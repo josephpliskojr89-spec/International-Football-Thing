@@ -66,7 +66,7 @@ describe('dynamic world ratings (Elo)', () => {
     let w = initWorld()
     for (let i = 0; i < 10; i++) w = applyResult(w, { homeId: 'USA', awayId: 'MEX', hg: 3, ag: 0 }, 'finals')
     const inflated = ratingOf(w, 'USA')
-    const ticked = seasonTick(w)
+    const ticked = seasonTick(w).world
     expect(ratingOf(ticked, 'USA')).toBeLessThan(inflated)
     expect(ratingOf(ticked, 'USA')).toBeGreaterThan(ALL_NATIONS_BY_ID['USA'].nationRating)
     expect(ticked.seasonStartRanks['USA']).toBe(worldRankOf(ticked, 'USA'))
@@ -173,7 +173,7 @@ describe('history no longer repeats', () => {
         w = playBackgroundWindow(w, 31337, season, week, new Set())
       }
       if (season % 4 === 1) w = playForeignContinentals(w, 31337, season, 'NONE').world
-      w = seasonTick(w)
+      w = seasonTick(w, 31337, season).world
     }
     const before = createTournament('WORLD_CUP', 'ENG', 1, 1, true).field
     const after = createTournament('WORLD_CUP', 'ENG', 1, 1, true, w).field

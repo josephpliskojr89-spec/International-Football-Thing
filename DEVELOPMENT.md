@@ -142,19 +142,43 @@ window + deadline machinery stays).
   World Cup seeding cutline. Season-end news beats for big risers/fallers and
   the manager's own movement; a news item when foreign continents crown champions.
 
+### Milestone 7 — the long game (done)
+Audit closure + the "alternate football history" layer:
+- 4-year cycle realigned: year 1 = friendlies + Continental summer; years 2-3 =
+  the 10-matchday qualifying campaign (concludes BEFORE the World Cup it feeds,
+  drawn fresh each cycle with a news beat); year 4 = warm-up friendlies + the
+  World Cup. Friendlies are back (`friendlyFixture`): low Elo stakes, in-person
+  reads, and the warm way to court dual nationals.
+- Injuries have consequences: match injuries persist (`injuredWeeks`), heal
+  weekly, auto-lineup avoids the injured, kickoff swaps hurt starters for bench
+  cover, 3+ week blows make the news.
+- World Cup hosts (`pickWorldCupHost`): awarded per cycle (never back-to-back,
+  culture-weighted, deterministic), announced years ahead, auto-qualified,
+  home-advantage ties while everyone else plays neutral venues (matchLite has a
+  neutral mode; manager finals ties honor host/neutral too). Sometimes it's YOU.
+- Squad lock fairness (unlocked when eliminated/not at the finals), shootout
+  scores everywhere (bracket, drama news), holders-out + giant-killing news.
+- Eras engine (`world.trends`): bounded mean-reverting development trends per
+  nation shift where ratings settle across decades — sleeping giants, declining
+  powers, era headlines. Botswana-proof by clamps + culture-weighted volatility.
+- The courting war: weekly rival-nation clock on uncommitted dual nationals
+  (quality- and rival-strength-driven), warning news, permanent LOSS with squad
+  reconciliation; `courtPlayer` staff visits (trophies help), friendly caps
+  warm leans, competitive caps CAP-TIE forever. Dual Nationals screen rebuilt.
+- Legacy layer: caps + international goals tracked, retiring greats enter the
+  Pantheon, manager P/W/D/L record, trophy cabinet, and the World Football
+  Almanac (`career.history`) — every champion, host, qualification, POTY and
+  legend, season by season with real-year labels (`displayYear`). Legacy screen.
+- Awards (`engine/awards.ts`): World Player of the Year (drawn from every
+  nation's living generational squad + your pool, silverware-weighted,
+  deterministic — award dynasties happen); Player of the Tournament at finals.
+
 ### Not yet built (next milestones)
 1. Confederation-specific qualifying formats (league/hex/group variants) and
-   inter-confederation playoffs; align the 2-year qualifying campaign to the
-   4-year cycle (currently every other campaign's result is never consumed).
-2. Eligibility/persuasion (courting a dual national, rival-AI clock). The data
-   model (leans, eligibleNations, eligibilityState, tiedNation) and the Dual
-   Nationals screen exist; the interactive courting loop does not. Needs
-   friendlies back as a courting tool.
-3. Trophy cabinet / honours UI (`career.trophies` is banked but never shown);
-   injuries with consequences (match injuries are currently flavor only);
-   squad-lock fix when not at the finals; neutral-venue manager finals ties.
-4. Template-driven News engine (events → priority → feed mix). Current feed is
+   inter-confederation playoffs.
+2. Template-driven News engine (events → priority → feed mix). Current feed is
    hand-written template banks, not the bible's event-priority system.
-5. Offline service worker re-enabled (network-first) before release — currently
+3. Offline service worker re-enabled (network-first) before release — currently
    self-destroying to kill stuck SWs.
-6. Manager progression (move nations, get sacked, skills) — deferred per design.
+4. Manager progression (move nations, get sacked, skills) — deferred per design.
+5. Continental championships with real qualification (currently top-8 by rating).

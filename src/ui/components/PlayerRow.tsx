@@ -17,7 +17,7 @@ export function PlayerRow({
         {p.position}
       </span>
       <span className="prow__main">
-        <span className="prow__name">{p.name}</span>
+        <span className="prow__name">{p.name}{p.injuredWeeks > 0 && <span title={`out ~${p.injuredWeeks}w`}> 🩹</span>}</span>
         <span className="prow__sub">
           {p.age} · {p.club}
           {pot !== '?' && <span style={{ color: 'var(--gold)' }}> · {pot}</span>}

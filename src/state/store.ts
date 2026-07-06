@@ -5,8 +5,9 @@ import { advanceWeek as advanceWeekEngine } from '@/engine/calendar'
 import { simulateMatch, type MatchResult } from '@/engine/match'
 import { buildManagerTeam, buildOpponentTeam } from '@/engine/matchSetup'
 import { seeInPerson, targetedLook } from '@/engine/scouting'
-import { isSquadLocked, currentMatch } from '@/engine/fixtures'
-import { managerFixture, resolveMatchday, createCampaign } from '@/engine/campaign'
+import { isSquadLocked, currentMatch, friendlyFixture } from '@/engine/fixtures'
+import { managerFixture, resolveMatchday } from '@/engine/campaign'
+import { playerOfTheTournament } from '@/engine/awards'
 import {
   createTournament,
   managerTie,
@@ -16,7 +17,7 @@ import {
   totalRounds,
   type TieResult,
 } from '@/engine/tournament'
-import { deriveSeed, hashStr } from '@/engine/rng'
+import { RNG, deriveSeed, hashStr } from '@/engine/rng'
 import { ratingOf, applyResults } from '@/engine/world'
 import { ALL_NATIONS_BY_ID } from '@/data/nations'
 import {
@@ -47,6 +48,7 @@ export type Route =
   | 'standings'
   | 'bracket'
   | 'rankings'
+  | 'legacy'
 
 interface GameState {
   route: Route
@@ -70,6 +72,7 @@ interface GameState {
   playCurrentMatch: () => MatchResult | null
   assignCoach: (coachId: string, league: string | null) => void
   sendScout: (newsId: string, playerId: string) => boolean
+  courtPlayer: (playerId: string) => boolean
 }
 
 // Clear the focal point if the chosen player is no longer in the XI.
@@ -226,11 +229,45 @@ export const useGame = create<GameState>((set, get) => ({
     if (!career) return null
     const cm = currentMatch(career)
     if (!cm) return null
-    const resolved = cm.type === 'TOURNAMENT' ? resolveTournament(career) : resolveQualifier(career)
+    const resolved =
+      cm.type === 'TOURNAMENT'
+        ? resolveTournament(career)
+        : cm.type === 'FRIENDLY'
+          ? resolveFriendly(career)
+          : resolveQualifier(career)
     if (!resolved) return null
     set({ career: resolved.next })
     scheduleSave(resolved.next)
     return resolved.result
+  },
+
+  // Personal contact with an uncommitted dual national: costs a staff visit
+  // (same budget as targeted scouting — your people are stretched), warms his
+  // lean toward you. Trophies talk: silverware makes the pitch land harder.
+  courtPlayer: (playerId) => {
+    const { career } = get()
+    if (!career) return false
+    const coachIdx = career.coaches.findIndex((c) => !c.targetedLookUsed)
+    if (coachIdx < 0) return false
+
+    const p = career.players.find((x) => x.id === playerId)
+    if (!p || p.eligibleNations.length < 2 || p.eligibilityState === 'CAP_TIED' || p.eligibilityState === 'LOST') return false
+
+    const rng = new RNG(deriveSeed(career.seed, career.season, career.week, hashStr(playerId)))
+    const trophyPull = Math.min(6, career.trophies.length * 2)
+    const gain = rng.range(9, 15) + trophyPull
+    const coaches = career.coaches.map((c, i) => (i === coachIdx ? { ...c, targetedLookUsed: true } : c))
+    const players = career.players.map((x) =>
+      x.id === playerId
+        ? { ...x, leans: { ...x.leans, [career.managerNationId]: Math.min(100, (x.leans[career.managerNationId] ?? 50) + gain) } }
+        : x,
+    )
+    const news: NewsItem = mkStoreNews(`courted-${playerId}-${career.season}-${career.week}`, career, 'COURTING', 0.5,
+      `Your staff paid ${p.name} a personal visit. ${trophyPull > 0 ? 'The trophies did some of the talking. ' : ''}He was listening.`)
+    const next: Career = { ...career, coaches, players, news: [news, ...career.news].slice(0, 80) }
+    set({ career: next })
+    scheduleSave(next)
+    return true
   },
 
   sendScout: (newsId, playerId) => {
@@ -259,16 +296,78 @@ export const useGame = create<GameState>((set, get) => ({
 
 // ---- match resolution (pure: take a career, return the next career + result) ----
 
-// Apply an exact-read + form nudge to the registered 26 who were in camp.
-function applySquadAfterMatch(career: Career, ratings: { playerId: string; rating: number }[]): Player[] {
+// Apply the aftermath of a match to the manager's pool: exact in-person reads
+// and form for the 26 in camp, caps + goals for those who actually played,
+// injuries picked up on the pitch (with news), and — if the match was
+// competitive — any uncommitted dual national who played is now CAP-TIED to
+// you, forever. Friendlies instead nudge his heart your way.
+function applySquadAfterMatch(
+  career: Career,
+  result: MatchResult,
+  managerIsHome: boolean,
+  competitive: boolean,
+): { players: Player[]; aftermathNews: NewsItem[] } {
+  const ratings = managerIsHome ? result.ratingsHome : result.ratingsAway
   const ratingById = new Map(ratings.map((r) => [r.playerId, r.rating]))
+  const goalsById = new Map(ratings.map((r) => [r.playerId, r.goals]))
+  const mySide = managerIsHome ? 'home' : 'away'
+  const injuredIds = new Set(
+    result.events.filter((e) => e.type === 'INJURY' && e.side === mySide).map((e) => e.playerId),
+  )
   const squad = new Set<string>(career.registeredSquad)
-  return career.players.map((p) => {
+  const news: NewsItem[] = []
+
+  const players = career.players.map((p) => {
     if (!squad.has(p.id)) return p
+    let next = p
     const r = ratingById.get(p.id)
-    const formed = r === undefined ? p : { ...p, form: Math.max(20, Math.min(99, Math.round(p.form + (r - 6.5) * 3))) }
-    return seeInPerson(formed)
+    if (r !== undefined) {
+      next = {
+        ...next,
+        form: Math.max(20, Math.min(99, Math.round(p.form + (r - 6.5) * 3))),
+        caps: p.caps + 1,
+        intlGoals: p.intlGoals + (goalsById.get(p.id) ?? 0),
+      }
+      // Playing for you settles a torn heart — a friendly warms him, a
+      // competitive match ties him for good.
+      if (next.eligibleNations.length > 1 && next.eligibilityState !== 'CAP_TIED' && next.eligibilityState !== 'LOST') {
+        if (competitive) {
+          next = { ...next, eligibilityState: 'CAP_TIED', tiedNation: career.managerNationId }
+          news.push(mkStoreNews(`tied-${p.id}-${career.season}-${career.week}`, career, 'CAP_TIED', 0.85,
+            `${p.name} is now cap-tied to ${ALL_NATIONS_BY_ID[career.managerNationId].name}. The tug-of-war is over — he's yours.`))
+        } else {
+          const leans = { ...next.leans, [career.managerNationId]: Math.min(100, (next.leans[career.managerNationId] ?? 50) + 14) }
+          next = { ...next, leans }
+        }
+      }
+    }
+    if (injuredIds.has(p.id)) {
+      const weeks = 1 + (hashStr(p.id + career.week) % 6) // 1..6 weeks out
+      next = { ...next, injuredWeeks: weeks }
+      if (weeks >= 3) {
+        news.push(mkStoreNews(`inj-${p.id}-${career.season}-${career.week}`, career, 'INJURY', 0.7,
+          `Blow for ${ALL_NATIONS_BY_ID[career.managerNationId].name}: ${p.name} limps off and is ruled out for around ${weeks} weeks.`))
+      }
+    }
+    return seeInPerson(next) // everyone in camp gets an exact in-person read
   })
+  return { players, aftermathNews: news }
+}
+
+function mkStoreNews(id: string, career: Career, type: string, magnitude: number, text: string): NewsItem {
+  return { id, year: career.year, week: career.week, type, magnitude, text }
+}
+
+// Aggregate manager record, from the manager's perspective.
+function updateRecord(record: Career['record'], mine: number, theirs: number): Career['record'] {
+  return {
+    p: record.p + 1,
+    w: record.w + (mine > theirs ? 1 : 0),
+    d: record.d + (mine === theirs ? 1 : 0),
+    l: record.l + (mine < theirs ? 1 : 0),
+    gf: record.gf + mine,
+    ga: record.ga + theirs,
+  }
 }
 
 function resolveQualifier(career: Career): { next: Career; result: MatchResult } | null {
@@ -288,7 +387,7 @@ function resolveQualifier(career: Career): { next: Career; result: MatchResult }
   const seed = deriveSeed(career.seed, career.campaign.cycle, career.campaign.matchdayIndex, hashStr(opponent.id))
   const result = simulateMatch(home, away, seed)
 
-  const players = applySquadAfterMatch(career, isHome ? result.ratingsHome : result.ratingsAway)
+  const { players, aftermathNews } = applySquadAfterMatch(career, result, isHome, true)
 
   const myId = career.managerNationId
   const managerResult = {
@@ -297,27 +396,85 @@ function resolveQualifier(career: Career): { next: Career; result: MatchResult }
     hg: result.homeGoals,
     ag: result.awayGoals,
   }
-  let campaign = resolveMatchday(career.campaign, managerResult, myId, career.seed, career.season, career.world)
+  const campaign = resolveMatchday(career.campaign, managerResult, myId, career.seed, career.season, career.world)
   // Every result of the matchday — the manager's included — moves the world.
-  let world = applyResults(career.world, campaign.recentResults, 'qualifier')
+  const world = applyResults(career.world, campaign.recentResults, 'qualifier')
   const extraNews: NewsItem[] = []
+  const history = [...career.history]
   let qualifiedForWorldCup = career.qualifiedForWorldCup
   if (campaign.complete) {
+    // The campaign concludes at the end of cycle year 3 — the verdict stands
+    // until the World Cup next summer. (A fresh campaign starts in year 2.)
     qualifiedForWorldCup = campaign.qualifiedIds.includes(myId)
     extraNews.push(qualificationNews(campaign, myId, career.year, career.week))
-    campaign = createCampaign(myId, career.seed, campaign.cycle + 1, world)
+    history.push({
+      season: career.season,
+      type: qualifiedForWorldCup ? 'QUALIFIED' : 'MISSED',
+      text: qualifiedForWorldCup
+        ? `${ALL_NATIONS_BY_ID[myId].name} qualify for the World Cup`
+        : `${ALL_NATIONS_BY_ID[myId].name} miss out on the World Cup`,
+      nationId: myId,
+      managerMoment: true,
+    })
   }
 
+  const mine = isHome ? result.homeGoals : result.awayGoals
+  const theirs = isHome ? result.awayGoals : result.homeGoals
   const headline = matchHeadline(result, isHome, career.year, career.week)
   const next: Career = {
     ...career,
     players,
     campaign,
     world,
+    history,
+    record: updateRecord(career.record, mine, theirs),
     qualifiedForWorldCup,
     playedFixtures: [...career.playedFixtures, key],
     coaches: career.coaches.map((c) => ({ ...c, targetedLookUsed: false })),
-    news: [headline, ...extraNews, ...career.news].slice(0, 60),
+    news: [headline, ...extraNews, ...aftermathNews, ...career.news].slice(0, 60),
+  }
+  return { next, result }
+}
+
+// A window friendly: low stakes for the world, high value for YOU — exact reads
+// on everyone in camp, a stage for the kids, and the warmest way to court an
+// uncommitted dual national.
+function resolveFriendly(career: Career): { next: Career; result: MatchResult } | null {
+  const window = windowAtWeek(career.week)
+  if (!window) return null
+  const key = fixtureKey(career.season, window.id)
+  if (career.playedFixtures.includes(key)) return null
+
+  const fx = friendlyFixture(career, window.id, career.season)
+  const opponent = ALL_NATIONS_BY_ID[fx.opponentId]
+  const isHome = fx.home
+  const managerTeam = buildManagerTeam(career, isHome)
+  const opponentTeam = buildOpponentTeam(opponent, career.seed, !isHome, career.season, ratingOf(career.world, opponent.id))
+  const home = isHome ? managerTeam : opponentTeam
+  const away = isHome ? opponentTeam : managerTeam
+  const seed = deriveSeed(career.seed, career.season, hashStr(window.id + opponent.id), 0xf1e)
+  const result = simulateMatch(home, away, seed)
+
+  const { players, aftermathNews } = applySquadAfterMatch(career, result, isHome, false)
+
+  const myId = career.managerNationId
+  const world = applyResults(
+    career.world,
+    [{ homeId: isHome ? myId : opponent.id, awayId: isHome ? opponent.id : myId, hg: result.homeGoals, ag: result.awayGoals }],
+    'friendly',
+  )
+
+  const mine = isHome ? result.homeGoals : result.awayGoals
+  const theirs = isHome ? result.awayGoals : result.homeGoals
+  const headline = matchHeadline(result, isHome, career.year, career.week, 'a friendly')
+  const next: Career = {
+    ...career,
+    players,
+    world,
+    record: updateRecord(career.record, mine, theirs),
+    playedFixtures: [...career.playedFixtures, key],
+    coaches: career.coaches.map((c) => ({ ...c, targetedLookUsed: false })),
+    news: [headline, ...aftermathNews, ...career.news].slice(0, 60),
   }
   return { next, result }
 }
@@ -329,15 +486,18 @@ function resolveTournament(career: Career): { next: Career; result: MatchResult 
   if (!mt) return null
 
   const opponent = ALL_NATIONS_BY_ID[mt.opponentId]
-  const isHome = mt.home
-  const managerTeam = buildManagerTeam(career, isHome)
-  const opponentTeam = buildOpponentTeam(opponent, career.seed, !isHome, career.season, ratingOf(career.world, opponent.id))
+  const isHome = mt.home // a/b orientation of the tie (seeding), not the venue
+  // Venue: finals are neutral ground unless one side is the World Cup host.
+  const iHost = t.kind === 'WORLD_CUP' && t.hostId === career.managerNationId
+  const oppHosts = t.kind === 'WORLD_CUP' && t.hostId === opponent.id
+  const managerTeam = buildManagerTeam(career, iHost)
+  const opponentTeam = buildOpponentTeam(opponent, career.seed, oppHosts, career.season, ratingOf(career.world, opponent.id))
   const home = isHome ? managerTeam : opponentTeam
   const away = isHome ? opponentTeam : managerTeam
   const seed = deriveSeed(career.seed, t.roundIndex, hashStr(opponent.id), 0xfeed)
   const result = simulateMatch(home, away, seed)
 
-  const players = applySquadAfterMatch(career, isHome ? result.ratingsHome : result.ratingsAway)
+  const { players, aftermathNews } = applySquadAfterMatch(career, result, isHome, true)
 
   // Build the tie result in the tie's a/b orientation (aGoals = home goals here,
   // because the team built as "home" is always the tie's a-side).
@@ -353,10 +513,15 @@ function resolveTournament(career: Career): { next: Career; result: MatchResult 
     deriveSeed(seed, 7),
   )
 
-  const next = stepTournament({ ...career, players }, tieResult)
+  const mine = isHome ? result.homeGoals : result.awayGoals
+  const theirs = isHome ? result.awayGoals : result.homeGoals
+  const next = stepTournament(
+    { ...career, players, record: updateRecord(career.record, mine, theirs) },
+    tieResult,
+  )
   // The manager's own match also gets a headline.
-  const headline = matchHeadline(result, isHome, career.year, career.week, t.name)
-  return { next: { ...next, news: [headline, ...next.news].slice(0, 80) }, result }
+  const headline = matchHeadline(result, isHome, career.year, career.week, `the ${t.name}`)
+  return { next: { ...next, news: [headline, ...aftermathNews, ...next.news].slice(0, 80) }, result }
 }
 
 // Resolve the current finals round (manager result applied if given, rest
@@ -380,11 +545,36 @@ function stepTournament(career: Career, managerResult: TieResult | null): Career
     'finals',
   )
   const news: NewsItem[] = []
+  const history = [...career.history]
   let trophies = career.trophies
+  const rounds = totalRounds(newT.field.length)
+  const rName = roundName(newT.kind, t.roundIndex, rounds)
+
+  // Drama desk: shocks (a much lower-rated side dumping out a favorite) and
+  // the holders going out always make the front page.
+  const holders = [...career.history].reverse().find((h) => h.type === 'WORLD_CUP')?.nationId
+  let shocks = 0
+  for (const tie of playedRound) {
+    if (!tie.winnerId) continue
+    const loserId = tie.winnerId === tie.aId ? tie.bId : tie.aId
+    if (loserId === career.managerNationId || tie.winnerId === career.managerNationId) continue
+    const upset = ratingOf(career.world, tie.winnerId) < ratingOf(career.world, loserId) - 6
+    if (newT.kind === 'WORLD_CUP' && holders && loserId === holders) {
+      news.push(mkStoreNews(`holders-out-${career.season}`, career, 'SHOCK', 0.8,
+        `The holders are OUT: ${ALL_NATIONS_BY_ID[loserId].name} fall to ${ALL_NATIONS_BY_ID[tie.winnerId].name} in the ${rName}${tie.pens ? ' on penalties' : ''}.`))
+    } else if (upset && shocks < 2) {
+      shocks++
+      news.push(mkStoreNews(`shock-${career.season}-${t.roundIndex}-${shocks}`, career, 'SHOCK', 0.65,
+        `Shock in the ${rName}: ${ALL_NATIONS_BY_ID[tie.winnerId].name} dump out ${ALL_NATIONS_BY_ID[loserId].name}${tie.pens ? ` ${tie.pensA}–${tie.pensB} on penalties` : ` ${tie.aGoals}–${tie.bGoals}`}.`))
+    }
+  }
 
   if (newT.champion) {
     const champ = ALL_NATIONS_BY_ID[newT.champion]
     const won = newT.champion === career.managerNationId
+    const finalTie = playedRound[0]
+    const runnerUpId = finalTie ? (finalTie.winnerId === finalTie.aId ? finalTie.bId : finalTie.aId) : null
+    const potm = playerOfTheTournament(career, newT.champion)
     news.push({
       id: `champ-${newT.kind}-${career.season}`,
       year: career.year,
@@ -392,10 +582,17 @@ function stepTournament(career: Career, managerResult: TieResult | null): Career
       type: newT.kind === 'WORLD_CUP' ? 'WORLD_CUP' : 'CONTINENTAL',
       magnitude: 1,
       text: won
-        ? `CHAMPIONS! ${champ.name} have won the ${newT.name}. Scenes that will never be forgotten.`
-        : `${champ.name} are crowned ${newT.name} champions.`,
+        ? `CHAMPIONS! ${champ.name} have won the ${newT.name}${newT.hostId === newT.champion ? ' ON HOME SOIL' : ''}. Scenes that will never be forgotten. ${potm.name} is named Player of the Tournament.`
+        : `${champ.name} are crowned ${newT.name} champions. ${potm.name} takes Player of the Tournament.`,
     })
     if (won) trophies = [...trophies, { kind: newT.kind, name: newT.name, season: career.season } as Trophy]
+    history.push({
+      season: career.season,
+      type: newT.kind === 'WORLD_CUP' ? 'WORLD_CUP' : 'CONTINENTAL',
+      text: `${champ.name} win the ${newT.name}${runnerUpId ? ` (beat ${ALL_NATIONS_BY_ID[runnerUpId].name}${finalTie?.pens ? ` ${finalTie.pensA}–${finalTie.pensB} pens` : ` ${finalTie?.aGoals}–${finalTie?.bGoals}`} in the final)` : ''}${newT.hostId === newT.champion ? ' — as hosts' : ''} · ${potm.name} Player of the Tournament`,
+      nationId: newT.champion,
+      managerMoment: won,
+    })
   } else if (newT.eliminated && !t.eliminated) {
     news.push({
       id: `out-${newT.kind}-${career.season}-${t.roundIndex}`,
@@ -403,11 +600,11 @@ function stepTournament(career: Career, managerResult: TieResult | null): Career
       week: career.week,
       type: 'KNOCKED_OUT',
       magnitude: 0.8,
-      text: `${ALL_NATIONS_BY_ID[career.managerNationId].name} are out of the ${newT.name}. The dream ends here — for now.`,
+      text: `${ALL_NATIONS_BY_ID[career.managerNationId].name} are out of the ${newT.name} at the ${rName} stage. The dream ends here — for now.`,
     })
   }
 
-  return { ...career, tournament: newT, world, trophies, news: [...news, ...career.news].slice(0, 80) }
+  return { ...career, tournament: newT, world, trophies, history, news: [...news, ...career.news].slice(0, 80) }
 }
 
 // Calendar-driven tournament lifecycle: create the summer finals at its deadline,
@@ -417,7 +614,7 @@ function progressTournament(career: Career): Career {
   const slot = tournamentForYear(c.year)
   if (slot && c.week === TOURNAMENT_DEADLINE_WEEK && !c.tournament) {
     const include = slot === 'WORLD_CUP' ? worldCupInclusion(c) : true
-    const t = createTournament(slot, c.managerNationId, c.seed, c.season, include, c.world)
+    const t = createTournament(slot, c.managerNationId, c.seed, c.season, include, c.world, c.wcHostId)
     c = { ...c, tournament: t, news: [tournamentDrawNews(t, c), ...c.news].slice(0, 80) }
   }
 
@@ -429,9 +626,8 @@ function progressTournament(career: Career): Career {
 }
 
 function worldCupInclusion(career: Career): boolean {
-  if (career.qualifiedForWorldCup) return true
-  const pos = career.campaign.standings.findIndex((s) => s.nationId === career.managerNationId)
-  return pos >= 0 && pos < career.campaign.qualifyCount
+  if (career.wcHostId === career.managerNationId) return true // hosts don't qualify
+  return career.qualifiedForWorldCup
 }
 
 function tournamentDrawNews(t: Tournament, career: Career): NewsItem {

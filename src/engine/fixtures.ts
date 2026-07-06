@@ -13,9 +13,13 @@ import {
   tournamentForYear,
   tournamentRoundAtWeek,
   inTournamentBlock,
+  qualifiersActiveInYear,
 } from '@/data/windows'
+import { ALL_NATIONS } from '@/data/nations'
 import { managerFixture } from './campaign'
 import { managerTie, roundName, totalRounds } from './tournament'
+import { ratingOf } from './world'
+import { RNG, deriveSeed, hashStr } from './rng'
 
 export const SQUAD_SIZE = 26
 export const MIN_GK = 3
@@ -29,20 +33,43 @@ export interface Fixture {
   home: boolean
 }
 
-// The manager's next competitive fixture, sourced from the qualifying campaign's
-// current matchday. Null only if the campaign somehow has no fixture (guarded
-// by always-regenerating a campaign on completion).
+// The manager's next window fixture: a qualifier in campaign years (2-3), a
+// friendly otherwise. Friendlies are where you blood youngsters, earn in-person
+// reads without stakes, and give an uncommitted dual national a taste.
 export function currentFixture(career: Career): Fixture | null {
-  const mf = managerFixture(career.campaign, career.managerNationId)
-  if (!mf) return null
-  return { opponentId: mf.opponentId, competitive: true, home: mf.home }
+  if (qualifiersActiveInYear(career.year)) {
+    const mf = managerFixture(career.campaign, career.managerNationId)
+    if (mf) return { opponentId: mf.opponentId, competitive: true, home: mf.home }
+    return null
+  }
+  const window = upcomingWindow(playedThisWeek(career) ? career.week + 1 : career.week)
+  return friendlyFixture(career, window.window.id, window.nextYear ? career.season + 1 : career.season)
 }
 
-// The single match the manager must play THIS week (qualifier or a finals
-// knockout tie), or null. A finals tie takes precedence during the summer block.
+// Deterministic friendly opponent: usually a similarly-ranked side (a proper
+// test), occasionally a glamour tie against a giant. Never a group-mate.
+export function friendlyFixture(career: Career, windowId: string, season: number): Fixture {
+  const rng = new RNG(deriveSeed(career.seed, season, hashStr(windowId), 0xf17e))
+  const myRating = ratingOf(career.world, career.managerNationId)
+  const candidates = ALL_NATIONS.filter((n) => n.isPlayable && n.id !== career.managerNationId)
+  const near = [...candidates]
+    .sort(
+      (a, b) =>
+        Math.abs(ratingOf(career.world, a.id) - myRating) -
+        Math.abs(ratingOf(career.world, b.id) - myRating),
+    )
+    .slice(0, 10)
+  const glamour = [...candidates].sort((a, b) => ratingOf(career.world, b.id) - ratingOf(career.world, a.id)).slice(0, 5)
+  const pick = rng.bool(0.2) ? rng.pick(glamour) : rng.pick(near)
+  return { opponentId: pick.id, competitive: false, home: rng.bool(0.5) }
+}
+
+// The single match the manager must play THIS week (qualifier, friendly, or a
+// finals knockout tie), or null. A finals tie takes precedence in the summer.
 export type CurrentMatch =
   | { type: 'QUALIFIER'; opponentId: string; home: boolean; label: string }
-  | { type: 'TOURNAMENT'; opponentId: string; home: boolean; label: string; round: string }
+  | { type: 'FRIENDLY'; opponentId: string; home: boolean; label: string }
+  | { type: 'TOURNAMENT'; opponentId: string; home: boolean; label: string; round: string; neutral: boolean }
 
 export function currentMatch(career: Career): CurrentMatch | null {
   const t = career.tournament
@@ -56,6 +83,8 @@ export function currentMatch(career: Career): CurrentMatch | null {
           home: mt.home,
           label: t.name,
           round: roundName(t.kind, t.roundIndex, totalRounds(t.field.length)),
+          // World Cup ties are neutral unless the manager hosts.
+          neutral: !(t.kind === 'WORLD_CUP' && career.wcHostId === career.managerNationId),
         }
       }
     }
@@ -64,8 +93,13 @@ export function currentMatch(career: Career): CurrentMatch | null {
 
   const window = windowAtWeek(career.week)
   if (window && !career.playedFixtures.includes(fixtureKey(career.season, window.id))) {
-    const mf = managerFixture(career.campaign, career.managerNationId)
-    if (mf) return { type: 'QUALIFIER', opponentId: mf.opponentId, home: mf.home, label: 'World Cup Qualifier' }
+    if (qualifiersActiveInYear(career.year)) {
+      const mf = managerFixture(career.campaign, career.managerNationId)
+      if (mf) return { type: 'QUALIFIER', opponentId: mf.opponentId, home: mf.home, label: 'World Cup Qualifier' }
+      return null
+    }
+    const f = friendlyFixture(career, window.id, career.season)
+    return { type: 'FRIENDLY', opponentId: f.opponentId, home: f.home, label: 'International Friendly' }
   }
   return null
 }
@@ -103,8 +137,14 @@ function playedThisWeek(career: Career): boolean {
 // through its match week — unless that match is already played, in which case
 // the next window governs.
 export function isSquadLocked(career: Career): boolean {
-  // The 26 is locked through a summer finals block (deadline -> last round week).
-  if (tournamentForYear(career.year) && inTournamentBlock(career.week)) return true
+  // The 26 is locked through a summer finals block (deadline -> last round week)
+  // — but only while you're actually IN the tournament. Watching from home or
+  // already eliminated? Your squad is your own business.
+  if (tournamentForYear(career.year) && inTournamentBlock(career.week)) {
+    const t = career.tournament
+    if (!t) return true // deadline week, draw imminent — locked
+    if (t.inField && !t.eliminated && !t.champion) return true
+  }
   return isRegistrationClosed(playedThisWeek(career) ? career.week + 1 : career.week)
 }
 

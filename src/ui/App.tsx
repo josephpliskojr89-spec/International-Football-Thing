@@ -14,6 +14,7 @@ import { SquadSelectionScreen } from './screens/SquadSelectionScreen'
 import { StandingsScreen } from './screens/StandingsScreen'
 import { BracketScreen } from './screens/BracketScreen'
 import { RankingsScreen } from './screens/RankingsScreen'
+import { LegacyScreen } from './screens/LegacyScreen'
 
 export function App() {
   const route = useGame((s) => s.route)
@@ -60,6 +61,8 @@ export function App() {
       return <BracketScreen />
     case 'rankings':
       return <RankingsScreen />
+    case 'legacy':
+      return <LegacyScreen />
     default:
       return <TitleScreen />
   }

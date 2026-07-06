@@ -25,7 +25,7 @@ export function SquadSelectionScreen() {
   )
 
   const sorted = useMemo(
-    () => [...career.players].sort((a, b) => b.knownOverall - a.knownOverall),
+    () => career.players.filter((p) => p.eligibilityState !== 'LOST').sort((a, b) => b.knownOverall - a.knownOverall),
     [career.players],
   )
 

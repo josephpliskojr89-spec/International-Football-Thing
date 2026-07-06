@@ -67,6 +67,20 @@ export function tournamentForYear(year: number): TournamentSlot {
   return null
 }
 
+// The shape of the 4-year cycle: year 1 = friendlies + the Continental summer;
+// years 2-3 = the 10-matchday World Cup qualifying campaign (exactly the ten
+// windows); year 4 = warm-up friendlies + the World Cup summer. Every campaign
+// concludes BEFORE the World Cup it feeds — every result counts.
+export function qualifiersActiveInYear(year: number): boolean {
+  return year === 2 || year === 3
+}
+
+// Display year for the almanac/news: season 1 = 2026 (a World Cup year minus
+// the cycle offset never matters — it's flavor that makes history feel real).
+export function displayYear(season: number): number {
+  return 2025 + season
+}
+
 // The bracket round index to play this week (0-based), or -1 if not a round week.
 export function tournamentRoundAtWeek(week: number): number {
   return TOURNAMENT_ROUND_WEEKS.indexOf(week)

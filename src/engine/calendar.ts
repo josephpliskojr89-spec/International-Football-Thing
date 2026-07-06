@@ -2,13 +2,16 @@ import type { Career, NewsItem, Player, WorldState } from './types'
 import { WEEKS_PER_YEAR } from '@/data/constants'
 import { RNG, deriveSeed } from './rng'
 import { ALL_NATIONS_BY_ID, NATIONS_BY_ID, CONFEDERATION_NAMES } from '@/data/nations'
-import { windowAtWeek } from '@/data/windows'
+import { windowAtWeek, displayYear } from '@/data/windows'
 import { developPlayerWeek, agePlayerOneYear } from './development'
 import { applyCoverageWeek } from './scouting'
 import { generateYouthIntake } from './youth'
 import { autoFillLineup } from './career'
+import { createCampaign } from './campaign'
+import { pickWorldCupHost } from './tournament'
+import { worldPlayerOfTheYear } from './awards'
 import { SQUAD_SIZE } from './fixtures'
-import { playBackgroundWindow, playForeignContinentals, seasonTick, worldRanking } from './world'
+import { playBackgroundWindow, playForeignContinentals, seasonTick, worldRanking, ratingOf } from './world'
 
 // The master week loop. Each week: the development engine moves real ability,
 // scouting coverage refreshes (or fails to refresh) reads, the REST of the
@@ -40,6 +43,8 @@ export function advanceWeek(career: Career): Career {
   // manager's group meet in their own qualifiers (lite-simmed, ratings move).
   // In a Continental year the other confederations crown champions at week 32.
   let world = career.world
+  const history = [...career.history]
+  let legends = career.legends
   if (windowAtWeek(week)) {
     const busy = new Set(career.campaign.groupNationIds)
     world = playBackgroundWindow(world, career.seed, season, week, busy)
@@ -56,18 +61,48 @@ export function advanceWeek(career: Career): Career {
         mkNews(`foreign-continentals-${season}`, year, week, 'CONTINENTAL', 0.6,
           `Continental champions crowned around the world: ${line}.`),
       )
+      for (const c of foreign.champions) {
+        history.push({
+          season,
+          type: 'FOREIGN_CONTINENTAL',
+          text: `${ALL_NATIONS_BY_ID[c.championId].name} win the ${CONFEDERATION_NAMES[c.confederation as keyof typeof CONFEDERATION_NAMES] ?? c.confederation} Championship`,
+          nationId: c.championId,
+        })
+      }
     }
   }
   if (rolledSeason) {
     news.push(...rankingMovementNews(world, career, year))
-    world = seasonTick(world)
+    const tick = seasonTick(world, career.seed, season)
+    world = tick.world
+    for (const [i, text] of tick.eraNews.entries()) {
+      news.push(mkNews(`era-${season}-${i}`, year, week, 'ERA', 0.7, text))
+    }
+    // Player of the Year — the world's best, crowned every season's end.
+    const poty = worldPlayerOfTheYear(career, season - 1)
+    news.push(
+      mkNews(`poty-${season}`, year, week, 'PLAYER_OF_YEAR', poty.isYours ? 1 : 0.6,
+        poty.isYours
+          ? `${poty.name} is the World Player of the Year — YOUR ${poty.name}. A golden night for ${NATIONS_BY_ID[career.managerNationId].name}.`
+          : `${poty.name} (${ALL_NATIONS_BY_ID[poty.nationId]?.name ?? poty.nationId}) is named World Player of the Year.`),
+    )
+    history.push({
+      season: season - 1,
+      type: 'POTY',
+      text: `${poty.name} (${ALL_NATIONS_BY_ID[poty.nationId]?.name ?? poty.nationId}) — World Player of the Year`,
+      nationId: poty.nationId,
+      managerMoment: poty.isYours,
+    })
   }
 
   // 1) Development moves REAL ability invisibly. Also age the memory of any
-  // in-person read so a stale call-up eventually reverts to a range.
+  // in-person read so a stale call-up eventually reverts to a range. Injured
+  // players heal one week at a time.
   let players = career.players.map((p) => {
-    const developed = developPlayerWeek(p, rng)
-    return p.inPersonOverall === null ? developed : { ...developed, inPersonWeeks: p.inPersonWeeks + 1 }
+    let next = developPlayerWeek(p, rng)
+    if (p.inPersonOverall !== null) next = { ...next, inPersonWeeks: p.inPersonWeeks + 1 }
+    if (p.injuredWeeks > 0) next = { ...next, injuredWeeks: p.injuredWeeks - 1 }
+    return next
   })
 
   // 2) Season rollover: age everyone, retire the old, bring in a new youth class.
@@ -76,6 +111,20 @@ export function advanceWeek(career: Career): Career {
     const retiring = players.filter((p) => p.age >= 36 && rng.bool(0.5 + (p.age - 36) * 0.15))
     for (const r of retiring.slice(0, 3)) {
       news.push(mkNews(`retire-${r.id}-${season}`, year, week, 'RETIREMENT', 0.5, `${r.name} has announced his retirement from international football.`))
+    }
+    // Departing greats enter the pantheon — caps and goals remembered forever.
+    for (const r of retiring) {
+      if (r.caps >= 25 || r.intlGoals >= 10) {
+        legends = [...legends, { name: r.name, position: r.position, caps: r.caps, goals: r.intlGoals, retiredSeason: season - 1, peakOverall: Math.round(Math.max(r.overall, r.knownOverall)) }]
+        history.push({
+          season: season - 1,
+          type: 'LEGEND',
+          text: `${r.name} retires: ${r.caps} caps, ${r.intlGoals} goals for ${NATIONS_BY_ID[career.managerNationId].name}`,
+          nationId: career.managerNationId,
+          managerMoment: true,
+        })
+        news.push(mkNews(`legend-${r.id}`, year, week, 'LEGEND', 0.85, `A legend bows out: ${r.name} retires with ${r.caps} caps and ${r.intlGoals} international goals. His shirt will weigh heavier on the next man.`))
+      }
     }
     const retiringIds = new Set(retiring.map((r) => r.id))
     players = players.filter((p) => !retiringIds.has(p.id))
@@ -97,6 +146,64 @@ export function advanceWeek(career: Career): Career {
     }
   }
 
+  // 2c) The rival-nation clock. Every uncommitted dual national is being
+  // courted by his OTHER country too. The better he is — and the stronger the
+  // rival — the harder they push. Ignore him long enough and one week the news
+  // simply reads: he's gone.
+  const lostIds = new Set<string>()
+  {
+    const courtRng = new RNG(deriveSeed(career.seed, season, week, 0xc0e7))
+    const myRating = ratingOf(world, career.managerNationId)
+    players = players.map((p) => {
+      if (p.eligibleNations.length < 2 || p.eligibilityState === 'CAP_TIED' || p.eligibilityState === 'LOST') return p
+      const rivalId = p.eligibleNations.find((id) => id !== career.managerNationId)
+      if (!rivalId) return p
+      const rivalRating = ratingOf(world, rivalId)
+      const interest = Math.min(
+        0.2,
+        Math.max(0.02, 0.05 + (p.potential - 70) * 0.004 + (rivalRating - myRating) * 0.003),
+      )
+      if (!courtRng.bool(interest)) return p
+      const prevRival = p.leans[rivalId] ?? 50
+      const myLean = p.leans[career.managerNationId] ?? 50
+      const newRival = Math.min(100, prevRival + courtRng.range(2, 6))
+      const leans = { ...p.leans, [rivalId]: newRival }
+      // Crossing the danger line makes the papers — your warning shot.
+      if (prevRival < 62 && newRival >= 62 && newRival > myLean) {
+        news.push(mkNews(`court-warn-${p.id}-${season}-${week}`, year, week, 'COURTING', 0.75,
+          `${ALL_NATIONS_BY_ID[rivalId].name} are pushing hard for ${p.name}. His agent says he "feels wanted over there." The clock is ticking.`))
+      }
+      // The declaration: rival lean high AND clearly ahead of yours.
+      if (newRival >= 72 && newRival > myLean + 8 && courtRng.bool(0.25)) {
+        lostIds.add(p.id)
+        news.push(mkNews(`lost-${p.id}-${season}`, year, week, 'DECLARED', 0.9,
+          `${p.name} has declared for ${ALL_NATIONS_BY_ID[rivalId].name}. He will never wear your shirt. The ones you don't call get called by someone else.`))
+        return { ...p, leans, eligibilityState: 'LOST' as const, tiedNation: rivalId }
+      }
+      return { ...p, leans }
+    })
+  }
+
+  // 2b) Cycle machinery on rollover: a fresh qualifying campaign as year 2
+  // opens; a new World Cup host announced as each cycle begins.
+  let campaign = career.campaign
+  let wcHostId = career.wcHostId
+  if (rolledSeason && year === 2) {
+    campaign = createCampaign(career.managerNationId, career.seed, campaign.cycle + 1, world)
+    news.push(mkNews(`quali-draw-${season}`, year, week, 'DRAW', 0.75,
+      `The World Cup qualifying draw is made. ${groupSummary(campaign, career.managerNationId)} Ten matchdays. Top ${campaign.qualifyCount} go to the finals.`))
+  }
+  if (rolledSeason && year === 1) {
+    wcHostId = pickWorldCupHost(career.managerNationId, career.seed, Math.ceil(season / 4) + 1, career.wcHostId)
+    const host = ALL_NATIONS_BY_ID[wcHostId]
+    const isYou = wcHostId === career.managerNationId
+    news.push(mkNews(`host-${season}`, year, week, 'HOST', isYou ? 1 : 0.7,
+      isYou
+        ? `IT'S COMING HOME TO YOU: ${host.name} will host the ${displayYear(season + 3)} World Cup. Automatic qualification — and a nation expecting everything.`
+        : `${host.name} are awarded the ${displayYear(season + 3)} World Cup. Expect them at full strength on home soil.`))
+    history.push({ season, type: 'HOST', text: `${host.name} awarded the ${displayYear(season + 3)} World Cup`, nationId: wcHostId, managerMoment: isYou })
+  }
+
   // 3) Coverage resolution: covered leagues sharpen reads, the rest drift fuzzy.
   players = applyCoverageWeek(players, career.coaches)
 
@@ -104,17 +211,18 @@ export function advanceWeek(career: Career): Career {
   news.push(...hypeNews(players, career, year, week, rng))
   news.push(...flavorNews(players, career, year, week, rng))
 
-  // 5) On rollover, retirements may have removed squad members — reconcile the
-  // registered 26 / XI / bench / focal point so we never field a dead player id.
+  // 5) On rollover (retirements) or a mid-season defection (a LOST dual
+  // national), squad members may have vanished — reconcile the registered 26 /
+  // XI / bench / focal point so we never field a dead player id.
   let { registeredSquad, lineup, bench, tactics } = career
-  if (rolledSeason) {
-    const validIds = new Set(players.map((p) => p.id))
+  if (rolledSeason || lostIds.size > 0) {
+    const validIds = new Set(players.filter((p) => p.eligibilityState !== 'LOST').map((p) => p.id))
     registeredSquad = registeredSquad.filter((id) => validIds.has(id))
     // Top up any vacancies left by retirements with the best available pool
     // players (this is where promoted youth get their first call-up).
     if (registeredSquad.length < SQUAD_SIZE) {
       const inSquad = new Set(registeredSquad)
-      const fill = players.filter((p) => !inSquad.has(p.id)).sort((a, b) => b.overall - a.overall)
+      const fill = players.filter((p) => !inSquad.has(p.id) && p.eligibilityState !== 'LOST').sort((a, b) => b.overall - a.overall)
       for (const p of fill) {
         if (registeredSquad.length >= SQUAD_SIZE) break
         registeredSquad.push(p.id)
@@ -136,6 +244,10 @@ export function advanceWeek(career: Career): Career {
     season,
     players,
     world,
+    campaign,
+    wcHostId,
+    history,
+    legends,
     registeredSquad,
     lineup,
     bench,
@@ -147,6 +259,12 @@ export function advanceWeek(career: Career): Career {
     tournament: rolledSeason ? null : career.tournament,
     news: [...news, ...career.news].slice(0, 80),
   }
+}
+
+// "Drawn with Spain, Serbia, ..." — the group in one breath.
+function groupSummary(campaign: Career['campaign'], myId: string): string {
+  const others = campaign.groupNationIds.filter((id) => id !== myId).map((id) => ALL_NATIONS_BY_ID[id]?.name ?? id)
+  return `Drawn with ${others.join(', ')}.`
 }
 
 // At season's end, call out the year's biggest climber and faller among the

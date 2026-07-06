@@ -12,6 +12,7 @@ const ENTRIES: MenuEntry[] = [
   { route: 'squad', icon: '⚽', label: 'Squad', sub: 'Formation, XI & tactics' },
   { route: 'standings', icon: '🏆', label: 'Qualifying', sub: 'Group table & results' },
   { route: 'rankings', icon: '📈', label: 'World Rankings', sub: 'Who’s rising, who’s sliding' },
+  { route: 'legacy', icon: '🏛️', label: 'Legacy', sub: 'Honours, records & the Almanac' },
   { route: 'pool', icon: '👥', label: 'Player Pool', sub: 'Everyone available to you' },
   { route: 'dual-nationals', icon: '🌍', label: 'Dual Nationals', sub: 'Eligible, not yet committed' },
   { route: 'scouting', icon: '🧭', label: 'Scouting', sub: 'Assign coaches to leagues' },

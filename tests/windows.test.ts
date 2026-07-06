@@ -48,12 +48,17 @@ describe('fixtures & squad', () => {
     expect(v.valid).toBe(true)
   })
 
-  it('the current fixture comes from the campaign and is a group opponent', () => {
+  it('year 1 windows are friendlies; qualifying years pull the campaign fixture', () => {
     const c = career('BRA')
+    // Year 1 of the cycle: a friendly against anyone (never yourself).
     const fx = currentFixture(c)!
-    expect(fx.competitive).toBe(true)
+    expect(fx.competitive).toBe(false)
     expect(fx.opponentId).not.toBe('BRA')
-    expect(c.campaign.groupNationIds).toContain(fx.opponentId)
+    // Year 2: the campaign takes over — a competitive group opponent.
+    const c2 = { ...c, year: 2 }
+    const qx = currentFixture(c2)!
+    expect(qx.competitive).toBe(true)
+    expect(c.campaign.groupNationIds).toContain(qx.opponentId)
   })
 
   it('squad validity flags an undersized goalkeeper count', () => {

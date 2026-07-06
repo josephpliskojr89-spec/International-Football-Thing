@@ -63,7 +63,9 @@ export function MatchScreen() {
         </button>
         <div>
           <div className="topbar__title">{isTournament ? match.round : match.label}</div>
-          <div className="topbar__sub">{isHome ? 'Home' : 'Away'} · {career.formation}</div>
+          <div className="topbar__sub">
+            {isTournament && match.neutral ? 'Neutral venue' : isHome ? 'Home' : 'Away'} · {career.formation}
+          </div>
         </div>
       </div>
 

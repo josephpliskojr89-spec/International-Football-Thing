@@ -6,6 +6,7 @@
 
 import type { Nation, Tie, Tournament, TournamentKind, WorldState } from './types'
 import { ALL_NATIONS, ALL_NATIONS_BY_ID, CONFEDERATION_NAMES } from '@/data/nations'
+import { displayYear } from '@/data/windows'
 import { RNG, deriveSeed, hashStr } from './rng'
 import { simulateMatch } from './match'
 import { simulateLite } from './matchLite'
@@ -20,6 +21,8 @@ export interface TieResult {
   bGoals: number
   winnerId: string
   pens: boolean
+  pensA?: number
+  pensB?: number
 }
 
 // Build a tournament around the manager. Continental = top of the manager's
@@ -31,9 +34,10 @@ export function createTournament(
   kind: TournamentKind,
   managerId: string,
   _seed: number,
-  _season: number,
+  season: number,
   includeManager: boolean,
   world?: WorldState,
+  hostId?: string | null,
 ): Tournament {
   const me = ALL_NATIONS_BY_ID[managerId]
   let pool: Nation[]
@@ -47,16 +51,35 @@ export function createTournament(
   } else {
     pool = [...ALL_NATIONS]
     size = WORLD_CUP_SIZE
-    name = 'World Cup'
+    name = `World Cup ${displayYear(season)}`
   }
 
-  // Seed by live strength; force the manager in (continental always; WC if qualified).
+  // Seed by live strength; force the manager in (continental always; WC if
+  // qualified) and the World Cup host in (hosts never qualify).
   const strength = (n: Nation) => ratingOf(world, n.id)
   const ranked = [...pool].sort((a, b) => strength(b) - strength(a))
   let field = ranked.slice(0, size)
   const inField = kind === 'CONTINENTAL' || includeManager
+  if (kind === 'WORLD_CUP' && hostId && !field.some((n) => n.id === hostId)) {
+    const host = ALL_NATIONS_BY_ID[hostId]
+    if (host) {
+      // Bump the weakest non-manager seed for the host.
+      for (let i = field.length - 1; i >= 0; i--) {
+        if (field[i].id !== managerId) {
+          field[i] = host
+          break
+        }
+      }
+    }
+  }
   if (inField && !field.some((n) => n.id === managerId)) {
-    field[field.length - 1] = me // bump the weakest seed for the manager
+    // Bump the weakest non-host seed for the manager.
+    for (let i = field.length - 1; i >= 0; i--) {
+      if (field[i].id !== hostId) {
+        field[i] = me
+        break
+      }
+    }
   }
   if (!inField) {
     // Manager watches: ensure they're NOT in the field.
@@ -71,6 +94,7 @@ export function createTournament(
     kind,
     name,
     managerId,
+    hostId: kind === 'WORLD_CUP' ? (hostId ?? null) : null,
     inField: inField && fieldIds.includes(managerId),
     field: fieldIds,
     rounds: [round0],
@@ -122,12 +146,14 @@ export function resolveTournamentRound(
     if (mt && i === mt.index && managerResult) {
       res = managerResult
     } else {
-      res = simTie(tie, seed, t.roundIndex, i, season, world)
+      res = simTie(tie, t, seed, t.roundIndex, i, season, world)
     }
     tie.aGoals = res.aGoals
     tie.bGoals = res.bGoals
     tie.winnerId = res.winnerId
     tie.pens = res.pens
+    tie.pensA = res.pensA
+    tie.pensB = res.pensB
   })
 
   const winners = round.map((tie) => tie.winnerId!).filter(Boolean)
@@ -153,30 +179,35 @@ export function resolveTournamentRound(
   return { ...t, rounds, roundIndex: t.roundIndex + 1, champion, eliminated }
 }
 
-// Simulate a non-manager tie to a decisive result.
-function simTie(tie: Tie, seed: number, roundIndex: number, i: number, season: number, world?: WorldState): TieResult {
+// Simulate a non-manager tie to a decisive result. Finals ties are on neutral
+// ground — unless one side is the World Cup HOST, who plays at home with the
+// crowd behind them.
+function simTie(tie: Tie, t: Tournament, seed: number, roundIndex: number, i: number, season: number, world?: WorldState): TieResult {
   const a = ALL_NATIONS_BY_ID[tie.aId]
   const b = ALL_NATIONS_BY_ID[tie.bId]
   const ra = ratingOf(world, tie.aId)
   const rb = ratingOf(world, tie.bId)
   const s = deriveSeed(seed, roundIndex, hashStr(tie.aId + tie.bId), i)
+  const aHosts = t.hostId === tie.aId
+  const bHosts = t.hostId === tie.bId
   let ag: number
   let bg: number
   if (a.isPlayable && b.isPlayable) {
-    const home = buildOpponentTeam(a, seed, true, season, ra)
-    const away = buildOpponentTeam(b, seed, false, season, rb)
+    const home = buildOpponentTeam(a, seed, aHosts, season, ra)
+    const away = buildOpponentTeam(b, seed, bHosts, season, rb)
     const r = simulateMatch(home, away, s)
     ag = r.homeGoals
     bg = r.awayGoals
   } else {
-    const lite = simulateLite(ra, rb, true, s)
+    const lite = simulateLite(ra, rb, aHosts ? true : bHosts ? false : null, s)
     ag = lite.goalsA
     bg = lite.goalsB
   }
   return decide(tie.aId, tie.bId, ag, bg, ra, rb, deriveSeed(s, 99))
 }
 
-// Ensure a winner: a draw goes to penalties, weighted slightly by strength.
+// Ensure a winner: a draw goes to penalties, weighted slightly by strength,
+// with a believable shootout score for the record books.
 export function decide(
   aId: string,
   bId: string,
@@ -192,7 +223,12 @@ export function decide(
   const rng = new RNG(seed >>> 0)
   const pA = 0.5 + (aRating - bRating) * 0.004
   const winnerId = rng.next() < pA ? aId : bId
-  return { aGoals: ag, bGoals: bg, winnerId, pens: true }
+  // Score: winner converts 3-5 (sudden death runs long occasionally).
+  const winPens = rng.bool(0.12) ? rng.int(5, 7) : rng.int(3, 5)
+  const losePens = Math.max(0, winPens - rng.int(1, 2))
+  const pensA = winnerId === aId ? winPens : losePens
+  const pensB = winnerId === bId ? winPens : losePens
+  return { aGoals: ag, bGoals: bg, winnerId, pens: true, pensA, pensB }
 }
 
 export function roundName(_kind: TournamentKind, roundIndex: number, totalRounds: number): string {
@@ -207,4 +243,27 @@ export function roundName(_kind: TournamentKind, roundIndex: number, totalRounds
 // How many rounds the bracket will have given the field size.
 export function totalRounds(fieldSize: number): number {
   return Math.max(1, Math.round(Math.log2(fieldSize)))
+}
+
+// Award this cycle's World Cup to a host. Any credible playable footballing
+// nation can win the bid (mid-rank hosts are half the fun), never back-to-back.
+// Deterministic per (seed, cycle) so the almanac is reproducible. Sometimes
+// it's YOUR country — and then the whole cycle is about not blowing it at home.
+export function pickWorldCupHost(
+  _managerId: string,
+  seed: number,
+  cycle: number,
+  prevHostId?: string | null,
+): string {
+  const rng = new RNG(deriveSeed(seed, cycle, 0x405e))
+  const candidates = ALL_NATIONS.filter((n) => n.isPlayable && n.id !== prevHostId)
+  // Weight by football culture: strong bids more likely, minnows possible-ish.
+  const weights = candidates.map((n) => Math.max(4, n.footballCulture - 55))
+  const total = weights.reduce((s, w) => s + w, 0)
+  let r = rng.next() * total
+  for (let i = 0; i < candidates.length; i++) {
+    r -= weights[i]
+    if (r <= 0) return candidates[i].id
+  }
+  return candidates[candidates.length - 1].id
 }
