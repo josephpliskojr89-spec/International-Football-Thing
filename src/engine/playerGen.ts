@@ -24,7 +24,7 @@ const CLUB_PLACES = ['North', 'Port', 'Lake', 'Hill', 'River', 'East', 'West', '
 //  - Strong-league nations (BRA/ARG/NED/POR/MEX/USA/JPN...) export their
 //    stars to the elite leagues and keep the squad players domestic.
 //  - Everyone else: the best go abroad, the rest play at home.
-function assignClub(nationality: string, overall: number, rng: RNG): { club: string; clubLeague: string } {
+export function assignClub(nationality: string, overall: number, rng: RNG): { club: string; clubLeague: string } {
   const home = DOMESTIC_LEAGUE[nationality]
   const fromLeague = (l: League) => ({ club: rng.pick(l.clubs), clubLeague: l.name })
   const generic = () => ({

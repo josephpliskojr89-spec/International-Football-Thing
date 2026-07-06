@@ -507,17 +507,35 @@ function applySquadAfterMatch(
   )
   const squad = new Set<string>(career.registeredSquad)
   const news: NewsItem[] = []
+  let debutsAnnounced = 0 // an early-career first XI is ALL debuts; only the notable ones make news
 
   const players = career.players.map((p) => {
     if (!squad.has(p.id)) return p
     let next = p
     const r = ratingById.get(p.id)
     if (r !== undefined) {
+      const goalsToday = goalsById.get(p.id) ?? 0
       next = {
         ...next,
         form: Math.max(20, Math.min(99, Math.round(p.form + (r - 6.5) * 3))),
         caps: p.caps + 1,
-        intlGoals: p.intlGoals + (goalsById.get(p.id) ?? 0),
+        intlGoals: p.intlGoals + goalsToday,
+      }
+      // Career texture: debuts, milestone caps, hat-tricks — the moments a
+      // federation's media office actually writes about.
+      if (next.caps === 1 && debutsAnnounced < 2 && (p.age <= 23 || goalsToday > 0)) {
+        debutsAnnounced++
+        news.push(mkStoreNews(`debut-${p.id}`, career, 'DEBUT', 0.6,
+          `A debut to remember${goalsToday > 0 ? ' — with a goal' : ''}: ${p.name}, ${p.age}, wins his first cap for ${ALL_NATIONS_BY_ID[career.managerNationId].name}.`))
+      } else if (next.caps === 50 || next.caps === 100) {
+        news.push(mkStoreNews(`caps-${next.caps}-${p.id}`, career, 'MILESTONE', next.caps === 100 ? 0.9 : 0.7,
+          next.caps === 100
+            ? `A CENTURION: ${p.name} wins his 100th cap. Whatever happens next, he belongs to history.`
+            : `${p.name} reaches 50 caps. Half a century of showing up when his country called.`))
+      }
+      if (goalsToday >= 3) {
+        news.push(mkStoreNews(`hattrick-${p.id}-${career.season}-${career.week}`, career, 'HAT_TRICK', 0.8,
+          `HAT-TRICK! ${p.name} takes the match ball home — ${goalsToday} goals in one shirt, one afternoon.`))
       }
       // Playing for you settles a torn heart — a friendly warms him, a
       // competitive match ties him for good.

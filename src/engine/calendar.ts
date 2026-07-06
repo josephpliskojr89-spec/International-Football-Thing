@@ -4,6 +4,8 @@ import { RNG, deriveSeed } from './rng'
 import { ALL_NATIONS_BY_ID, NATIONS_BY_ID, CONFEDERATION_NAMES } from '@/data/nations'
 import { windowAtWeek, displayYear } from '@/data/windows'
 import { developPlayerWeek, agePlayerOneYear } from './development'
+import { assignClub } from './playerGen'
+import { LEAGUES_BY_NAME } from '@/data/leagues'
 import { applyCoverageWeek } from './scouting'
 import { generateYouthIntake } from './youth'
 import { autoFillLineup } from './career'
@@ -256,13 +258,76 @@ export function advanceWeek(career: Career): Career {
     players = players.map((p) => {
       if (!inSquad.has(p.id) || p.injuredWeeks > 0) return p
       if (!rng.bool(0.006 + p.injuryRisk * 0.0001)) return p
-      const weeks = rng.bool(0.6) ? rng.int(1, 2) : rng.int(3, 5)
-      news.push(mkNews(`club-inj-${p.id}-${season}-${week}`, year, week, 'INJURY', weeks >= 3 ? 0.75 : 0.55,
-        weeks >= 3
-          ? `Bad news from ${p.club}: ${p.name} has been injured in league action and faces around ${weeks} weeks out.`
-          : `${p.name} picked up a knock playing for ${p.club} — expected back within ${weeks === 1 ? 'the week' : `${weeks} weeks`}.`))
+      // Most knocks are short. Once in a while it's the one you dread.
+      const severe = rng.bool(0.08)
+      const weeks = severe ? rng.int(10, 20) : rng.bool(0.6) ? rng.int(1, 2) : rng.int(3, 5)
+      news.push(mkNews(`club-inj-${p.id}-${season}-${week}`, year, week, 'INJURY', severe ? 0.95 : weeks >= 3 ? 0.75 : 0.55,
+        severe
+          ? `Devastating news from ${p.club}: ${p.name} has ruptured knee ligaments. He is out for months — around ${weeks} weeks. Plans change today.`
+          : weeks >= 3
+            ? `Bad news from ${p.club}: ${p.name} has been injured in league action and faces around ${weeks} weeks out.`
+            : `${p.name} picked up a knock playing for ${p.club} — expected back within ${weeks === 1 ? 'the week' : `${weeks} weeks`}.`))
       return { ...p, injuredWeeks: weeks }
     })
+  }
+
+  // 4d) Transfer windows (weeks 2-4 in winter, 33-35 in late summer): players
+  // whose club no longer matches their level MOVE. The wonderkid earns his big
+  // transfer; the fading veteran slides down a tier — and if he leaves a league
+  // your coaches cover, your read on him starts to blur. Real consequences.
+  if ((week >= 2 && week <= 4) || (week >= 33 && week <= 35)) {
+    const txRng = new RNG(deriveSeed(career.seed, season, week, 0x7a4))
+    const movers = players
+      .filter((p) => p.eligibilityState !== 'LOST')
+      .filter((p) => {
+        const tier = LEAGUES_BY_NAME[p.clubLeague]?.tier ?? 4 // generic counts as 4
+        // Outgrown his club: good player stuck below his level.
+        if (p.overall >= 82 && tier >= 3) return true
+        if (p.overall >= 85 && tier === 2) return true
+        // Or the opposite: past it at the top level.
+        if (p.overall < 68 && tier === 1 && p.age >= 30) return true
+        return false
+      })
+    if (movers.length > 0 && txRng.bool(0.55)) {
+      const p = movers[txRng.int(0, movers.length - 1)]
+      const dest = assignClub(p.nationality, p.overall, txRng)
+      if (dest.clubLeague !== p.clubLeague || dest.club !== p.club) {
+        const oldClub = p.club
+        const stepUp = (LEAGUES_BY_NAME[dest.clubLeague]?.tier ?? 4) < (LEAGUES_BY_NAME[p.clubLeague]?.tier ?? 4)
+        // A step up risks the bench at first; a step down usually buys minutes.
+        const ptShift = stepUp ? txRng.range(-0.18, 0.05) : txRng.range(0, 0.12)
+        players = players.map((x) =>
+          x.id === p.id
+            ? { ...x, ...dest, playingTime: Math.max(0.1, Math.min(1, x.playingTime + ptShift)), freshness: Math.max(20, x.freshness - 10) }
+            : x,
+        )
+        news.push(mkNews(`transfer-${p.id}-${season}-${week}`, year, week, 'TRANSFER', stepUp ? 0.7 : 0.5,
+          stepUp
+            ? `TRANSFER: ${p.name} completes his big move — ${oldClub} to ${dest.club} (${dest.clubLeague}). A step up in class; watch whether he plays.`
+            : `Transfer: ${p.name} leaves ${oldClub} for ${dest.club} (${dest.clubLeague}). Regular football should follow — your scouts will need to find the new ground, though.`))
+      }
+    }
+  }
+
+  // 4e) Camp arrivals: on a registration deadline eve, the staff's word on who's
+  // flying and who's flat — read the room before you pick the 26.
+  {
+    const nextWindow = windowAtWeek(week + 1)
+    if (nextWindow) {
+      const inSquad = players.filter((p) => career.registeredSquad.includes(p.id) && p.injuredWeeks === 0)
+      if (inSquad.length >= 2) {
+        const hot = [...inSquad].sort((a, b) => b.form - a.form)[0]
+        const cold = [...inSquad].sort((a, b) => a.form - b.form)[0]
+        if (hot.form >= 70) {
+          news.push(mkNews(`camp-hot-${season}-${week}`, year, week, 'CAMP', 0.5,
+            `Camp word: ${hot.name} arrives flying — ${hot.club} form has him full of belief. The staff say build around him this window.`))
+        }
+        if (cold.form <= 45 && cold.id !== hot.id) {
+          news.push(mkNews(`camp-cold-${season}-${week}`, year, week, 'CAMP', 0.5,
+            `Camp word: ${cold.name} turns up low on confidence after a rough spell at ${cold.club}. A quiet window — or a quiet bench — might serve him.`))
+        }
+      }
+    }
   }
 
   // 5) On rollover (retirements) or a mid-season defection (a LOST dual

@@ -244,6 +244,20 @@ Audit closure + the "alternate football history" layer:
   (the call every international manager dreads), and a "⏩ To next event"
   fast-forward that stops at matches, deadlines, sackings, offers, or big news.
 
+### Milestone 13 — the full realism pass (done)
+- Transfer windows (weeks 2-4 & 33-35): players whose club no longer matches
+  their level MOVE — the wonderkid earns his big transfer (with a playing-time
+  risk at the new level), the fading veteran slides down a tier, freshness dips
+  while your scouts find the new ground. A trickle, not a flood.
+- Severe injuries: ~8% of club-duty injuries are the dreaded one — ruptured
+  ligaments, months out ("Plans change today").
+- Career texture in the aftermath engine: notable debuts (flood-guarded to 2
+  per match, youth/scorers only), 50th/100th cap milestones ("A CENTURION"),
+  hat-trick front pages.
+- Camp arrivals: on deadline eve the staff report who's flying and who's flat,
+  read from real club form — pick your 26 informed.
+- (Scouting league picker already showed per-league pool counts + freshness.)
+
 ### Not yet built (next milestones)
 1. Confederation-specific qualifying formats (league/hex/group variants) and
    inter-confederation playoffs.
