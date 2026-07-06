@@ -8,6 +8,7 @@ import { generateManagerPool } from './playerGen'
 import { createCampaign } from './campaign'
 import { pickWorldCupHost } from './tournament'
 import { initWorld } from './world'
+import { cycleObjective } from './manager'
 import { RNG, deriveSeed } from './rng'
 import { generateName } from './nameGen'
 
@@ -64,6 +65,12 @@ export function createCareer(input: NewCareerInput): Career {
     history: [{ season: 1, type: 'HOST', text: `${host.name} awarded the ${displayYear(4)} World Cup`, nationId: hostId, managerMoment: hostId === input.nationId }],
     legends: [],
     record: { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0 },
+    reputation: 40,
+    objective: cycleObjective(initWorld(), input.nationId),
+    lastWcOutcome: null,
+    lastCampaignPosition: null,
+    offers: [],
+    sackedFrom: null,
     news: [
       {
         id: 'welcome',

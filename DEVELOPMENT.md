@@ -173,6 +173,19 @@ Audit closure + the "alternate football history" layer:
   nation's living generational squad + your pool, silverware-weighted,
   deterministic — award dynasties happen); Player of the Tournament at finals.
 
+### Milestone 8 — the manager's career (done)
+- Reputation (0-100, labeled): moved by qualification, trophies (+25 WC / +12
+  continental), and the board's cycle verdict. Shown on Legacy.
+- Board objectives per cycle, scaled to world rank (semis / quarters / qualify /
+  be competitive), announced in the feed, judged as each cycle closes.
+- SACKINGS: fail the board with a shredded reputation and you're out — but 2-3
+  weaker federations always call. Job offers screen; the world, almanac, record
+  and reputation all travel with you. Getting sacked by a giant and rebuilding
+  a minnow is a feature, not a game over.
+- Poaching: succeed with high reputation and a stronger nation may make an
+  approach — take the giant's job or stay loyal (small rep reward, fan love).
+- All-time World Cup roll of honour on Legacy (dynasties visible, yours starred).
+
 ### Not yet built (next milestones)
 1. Confederation-specific qualifying formats (league/hex/group variants) and
    inter-confederation playoffs.

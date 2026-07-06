@@ -23,6 +23,7 @@ const ENTRIES: MenuEntry[] = [
 export function MenuSheet({ onClose }: { onClose: () => void }) {
   const go = useGame((s) => s.go)
   const tournament = useGame((s) => s.career?.tournament)
+  const offers = useGame((s) => s.career?.offers)
 
   const navigate = (route: Route) => {
     onClose()
@@ -30,12 +31,15 @@ export function MenuSheet({ onClose }: { onClose: () => void }) {
   }
 
   // The Finals entry only appears while a summer tournament is live.
-  const entries: MenuEntry[] = tournament
+  let entries: MenuEntry[] = tournament
     ? [
         { route: 'bracket', icon: '🏆', label: tournament.name, sub: 'Bracket & results' },
         ...ENTRIES.filter((e) => e.route !== 'standings'),
       ]
     : ENTRIES
+  if (offers && offers.length > 0) {
+    entries = [{ route: 'offers', icon: '📞', label: 'Job Offers', sub: 'Federations want to talk' }, ...entries]
+  }
 
   return (
     <div className="sheet-backdrop" onClick={onClose}>

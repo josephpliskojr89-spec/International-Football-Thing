@@ -147,7 +147,11 @@ export function ScheduleScreen() {
       </div>
 
       <div style={{ padding: 'var(--pad)' }}>
-        {matchPending ? (
+        {career.sackedFrom ? (
+          <button className="btn btn--primary btn--lg btn--block" onClick={() => go('offers')}>
+            You've been sacked — choose your next chapter ›
+          </button>
+        ) : matchPending ? (
           <button className="btn btn--primary btn--lg btn--block" onClick={() => go('match')}>
             Play Match ›
           </button>

@@ -10,6 +10,7 @@ import { autoFillLineup } from './career'
 import { createCampaign } from './campaign'
 import { pickWorldCupHost } from './tournament'
 import { worldPlayerOfTheYear } from './awards'
+import { objectiveMet, clampRep, reputationLabel, SACK_THRESHOLD, sackOffers, poachOffer, cycleObjective } from './manager'
 import { SQUAD_SIZE } from './fixtures'
 import { playBackgroundWindow, playForeignContinentals, seasonTick, worldRanking, ratingOf } from './world'
 
@@ -193,7 +194,37 @@ export function advanceWeek(career: Career): Career {
     news.push(mkNews(`quali-draw-${season}`, year, week, 'DRAW', 0.75,
       `The World Cup qualifying draw is made. ${groupSummary(campaign, career.managerNationId)} Ten matchdays. Top ${campaign.qualifyCount} go to the finals.`))
   }
+  // Cycle verdict: as a new cycle opens, the board rules on the one just done.
+  let { reputation, objective, lastWcOutcome, lastCampaignPosition, offers, sackedFrom } = career
   if (rolledSeason && year === 1) {
+    const met = objectiveMet(career)
+    if (career.objective) {
+      reputation = clampRep(reputation + (met ? 8 : -12))
+      news.push(mkNews(`verdict-${season}`, year, week, 'BOARD', met ? 0.8 : 0.95,
+        met
+          ? `The board is satisfied: "${career.objective.text}" — delivered. Your standing grows (${reputationLabel(reputation)}).`
+          : `The board's demand — "${career.objective.text}" — was NOT met. Patience is thinning (${reputationLabel(reputation)}).`))
+      if (!met && reputation < SACK_THRESHOLD) {
+        sackedFrom = career.managerNationId
+        offers = sackOffers(career, career.seed)
+        news.push(mkNews(`sacked-${season}`, year, week, 'SACKED', 1,
+          `SACKED. ${NATIONS_BY_ID[career.managerNationId].name} have dismissed you. But the phone is already ringing — ${offers.map((id) => ALL_NATIONS_BY_ID[id]?.name).join(', ')} want to talk.`))
+        history.push({ season: season - 1, type: 'SACKED', text: `${career.managerName} sacked by ${NATIONS_BY_ID[career.managerNationId].name}`, nationId: career.managerNationId, managerMoment: true })
+      } else if (met) {
+        const suitor = poachOffer({ ...career, reputation }, career.seed)
+        if (suitor) {
+          offers = [suitor]
+          news.push(mkNews(`poach-${season}`, year, week, 'APPROACH', 0.9,
+            `${ALL_NATIONS_BY_ID[suitor].name} want YOU. Their board has made a formal approach. Loyalty or ambition — check your offers.`))
+        }
+      }
+    }
+    objective = cycleObjective(world, sackedFrom ?? career.managerNationId)
+    if (!sackedFrom) {
+      news.push(mkNews(`objective-${season}`, year, week, 'BOARD', 0.7, `The board sets the bar for the new cycle: "${objective.text}"`))
+    }
+    lastWcOutcome = null
+    lastCampaignPosition = null
     wcHostId = pickWorldCupHost(career.managerNationId, career.seed, Math.ceil(season / 4) + 1, career.wcHostId)
     const host = ALL_NATIONS_BY_ID[wcHostId]
     const isYou = wcHostId === career.managerNationId
@@ -248,6 +279,12 @@ export function advanceWeek(career: Career): Career {
     wcHostId,
     history,
     legends,
+    reputation,
+    objective,
+    lastWcOutcome,
+    lastCampaignPosition,
+    offers,
+    sackedFrom,
     registeredSquad,
     lineup,
     bench,

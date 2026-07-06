@@ -1,6 +1,8 @@
 import { useGame } from '@/state/store'
 import { NATIONS_BY_ID } from '@/data/nations'
 import { displayYear } from '@/data/windows'
+import { reputationLabel } from '@/engine/manager'
+import { ALL_NATIONS_BY_ID } from '@/data/nations'
 import { InCareerHeader } from '../components/InCareerHeader'
 import type { HistoryEntry } from '@/engine/types'
 
@@ -23,6 +25,13 @@ export function LegacyScreen() {
   }
   const seasons = [...bySeason.keys()].sort((a, b) => b - a)
 
+  // All-time World Cup titles in THIS save's timeline — dynasties made visible.
+  const titleCounts = new Map<string, number>()
+  for (const h of career.history) {
+    if (h.type === 'WORLD_CUP' && h.nationId) titleCounts.set(h.nationId, (titleCounts.get(h.nationId) ?? 0) + 1)
+  }
+  const wcTitles = [...titleCounts.entries()].sort((a, b) => b[1] - a[1])
+
   // Current record chasers.
   const capLeaders = [...career.players].sort((a, b) => b.caps - a.caps).slice(0, 3).filter((p) => p.caps > 0)
   const goalLeaders = [...career.players].sort((a, b) => b.intlGoals - a.intlGoals).slice(0, 3).filter((p) => p.intlGoals > 0)
@@ -32,6 +41,19 @@ export function LegacyScreen() {
       <InCareerHeader title="Legacy" sub={`${career.managerName} · ${nation.name}`} />
 
       <div className="screen__body">
+        <div className="card">
+          <div className="field-label">Standing</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, marginTop: 4 }}>
+            <span>Reputation</span>
+            <span>{reputationLabel(career.reputation)}</span>
+          </div>
+          {career.objective && (
+            <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>
+              The board demands: “{career.objective.text}”
+            </div>
+          )}
+        </div>
+
         <div className="card">
           <div className="field-label">Managerial record</div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontVariantNumeric: 'tabular-nums', fontWeight: 700, marginTop: 4 }}>
@@ -93,6 +115,18 @@ export function LegacyScreen() {
                 <div className="muted" style={{ fontSize: 13 }}>
                   {l.caps} caps · {l.goals} goals · retired {displayYear(l.retiredSeason)}
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {wcTitles.length > 0 && (
+          <div className="card">
+            <div className="field-label">World Cup roll of honour</div>
+            {wcTitles.map(([id, n]) => (
+              <div key={id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginTop: 4, fontWeight: id === career.managerNationId ? 800 : 400 }}>
+                <span>{ALL_NATIONS_BY_ID[id]?.name ?? id}{id === career.managerNationId ? ' ★' : ''}</span>
+                <span className="muted">{'🏆'.repeat(Math.min(n, 6))}{n > 6 ? ` ×${n}` : ''}</span>
               </div>
             ))}
           </div>

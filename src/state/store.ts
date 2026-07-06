@@ -8,6 +8,11 @@ import { seeInPerson, targetedLook } from '@/engine/scouting'
 import { isSquadLocked, currentMatch, friendlyFixture } from '@/engine/fixtures'
 import { managerFixture, resolveMatchday } from '@/engine/campaign'
 import { playerOfTheTournament } from '@/engine/awards'
+import { clampRep, nationName } from '@/engine/manager'
+import { autoFillBench } from '@/engine/career'
+import { createCampaign } from '@/engine/campaign'
+import { generateManagerPool } from '@/engine/playerGen'
+import { cycleObjective } from '@/engine/manager'
 import {
   createTournament,
   managerTie,
@@ -49,6 +54,7 @@ export type Route =
   | 'bracket'
   | 'rankings'
   | 'legacy'
+  | 'offers'
 
 interface GameState {
   route: Route
@@ -73,6 +79,8 @@ interface GameState {
   assignCoach: (coachId: string, league: string | null) => void
   sendScout: (newsId: string, playerId: string) => boolean
   courtPlayer: (playerId: string) => boolean
+  acceptOffer: (nationId: string) => void
+  declineOffers: () => void
 }
 
 // Clear the focal point if the chosen player is no longer in the XI.
@@ -141,6 +149,7 @@ export const useGame = create<GameState>((set, get) => ({
   advanceWeek: () => {
     const { career } = get()
     if (!career) return
+    if (career.sackedFrom) return // sacked: choose your next job before time moves on
     if (currentMatch(career)) return // a match is pending this week — play it first
     let next = advanceWeekEngine(career)
     next = progressTournament(next) // create the summer finals / auto-sim rounds you're not in
@@ -239,6 +248,71 @@ export const useGame = create<GameState>((set, get) => ({
     set({ career: resolved.next })
     scheduleSave(resolved.next)
     return resolved.result
+  },
+
+  // Take another nation's job. The WORLD comes with you — ratings, history,
+  // almanac, your reputation and record — but the players, the campaign and
+  // the dressing room are all new. This is how one save becomes a life's work.
+  acceptOffer: (nationId) => {
+    const { career } = get()
+    if (!career || !career.offers.includes(nationId)) return
+    const nation = ALL_NATIONS_BY_ID[nationId]
+    if (!nation || !nation.isPlayable) return
+
+    const players = generateManagerPool(nation, deriveSeed(career.seed, hashStr(nationId), career.season))
+    const lineup = autoFillLineup(players, career.formation, career.style)
+    const bench = autoFillBench(players, lineup, career.style)
+    const registeredSquad = [...new Set([...(Object.values(lineup).filter(Boolean) as string[]), ...bench])]
+    const oldName = nationName(career.managerNationId)
+
+    const next: Career = {
+      ...career,
+      managerNationId: nationId,
+      players,
+      lineup,
+      bench,
+      registeredSquad,
+      tactics: { ...career.tactics, focalPointId: null },
+      coaches: career.coaches.map((c) => ({ ...c, leagueAssignment: null, targetedLookUsed: false })),
+      campaign: createCampaign(nationId, career.seed, career.campaign.cycle, career.world),
+      qualifiedForWorldCup: false,
+      tournament: null,
+      lastWcOutcome: null,
+      lastCampaignPosition: null,
+      objective: cycleObjective(career.world, nationId),
+      offers: [],
+      sackedFrom: null,
+      history: [
+        ...career.history,
+        { season: career.season, type: 'JOB', text: `${career.managerName} takes charge of ${nation.name}`, nationId, managerMoment: true },
+      ],
+      news: [
+        mkStoreNews(`job-${nationId}-${career.season}`, career, 'APPOINTMENT', 1,
+          career.sackedFrom
+            ? `A new chapter: you take charge of ${nation.name}. ${oldName} is behind you — prove them wrong.`
+            : `You've done it — you walk out on ${oldName} to take the ${nation.name} job. No pressure.`),
+        ...career.news,
+      ].slice(0, 80),
+    }
+    set({ career: next, route: 'schedule' })
+    scheduleSave(next)
+  },
+
+  declineOffers: () => {
+    const { career } = get()
+    if (!career || career.sackedFrom) return // can't decline your way out of a sacking
+    const next: Career = {
+      ...career,
+      offers: [],
+      reputation: clampRep(career.reputation + 2),
+      news: [
+        mkStoreNews(`loyal-${career.season}`, career, 'LOYALTY', 0.6,
+          `You turn the approach down. The fans noticed. Loyalty like that buys patience.`),
+        ...career.news,
+      ].slice(0, 80),
+    }
+    set({ career: next, route: 'schedule' })
+    scheduleSave(next)
   },
 
   // Personal contact with an uncommitted dual national: costs a staff visit
@@ -402,10 +476,14 @@ function resolveQualifier(career: Career): { next: Career; result: MatchResult }
   const extraNews: NewsItem[] = []
   const history = [...career.history]
   let qualifiedForWorldCup = career.qualifiedForWorldCup
+  let reputation = career.reputation
+  let lastCampaignPosition = career.lastCampaignPosition
   if (campaign.complete) {
     // The campaign concludes at the end of cycle year 3 — the verdict stands
     // until the World Cup next summer. (A fresh campaign starts in year 2.)
     qualifiedForWorldCup = campaign.qualifiedIds.includes(myId)
+    reputation = clampRep(career.reputation + (qualifiedForWorldCup ? 6 : -10))
+    lastCampaignPosition = campaign.standings.findIndex((st) => st.nationId === myId) + 1
     extraNews.push(qualificationNews(campaign, myId, career.year, career.week))
     history.push({
       season: career.season,
@@ -428,6 +506,8 @@ function resolveQualifier(career: Career): { next: Career; result: MatchResult }
     world,
     history,
     record: updateRecord(career.record, mine, theirs),
+    reputation,
+    lastCampaignPosition,
     qualifiedForWorldCup,
     playedFixtures: [...career.playedFixtures, key],
     coaches: career.coaches.map((c) => ({ ...c, targetedLookUsed: false })),
@@ -547,6 +627,8 @@ function stepTournament(career: Career, managerResult: TieResult | null): Career
   const news: NewsItem[] = []
   const history = [...career.history]
   let trophies = career.trophies
+  let reputation = career.reputation
+  let lastWcOutcome = career.lastWcOutcome
   const rounds = totalRounds(newT.field.length)
   const rName = roundName(newT.kind, t.roundIndex, rounds)
 
@@ -586,6 +668,10 @@ function stepTournament(career: Career, managerResult: TieResult | null): Career
         : `${champ.name} are crowned ${newT.name} champions. ${potm.name} takes Player of the Tournament.`,
     })
     if (won) trophies = [...trophies, { kind: newT.kind, name: newT.name, season: career.season } as Trophy]
+    if (won) reputation = clampRep(career.reputation + (newT.kind === 'WORLD_CUP' ? 25 : 12))
+    if (newT.kind === 'WORLD_CUP' && newT.inField) {
+      lastWcOutcome = won ? 'WON' : career.managerNationId === runnerUpId ? 'FINAL' : career.lastWcOutcome
+    }
     history.push({
       season: career.season,
       type: newT.kind === 'WORLD_CUP' ? 'WORLD_CUP' : 'CONTINENTAL',
@@ -594,6 +680,10 @@ function stepTournament(career: Career, managerResult: TieResult | null): Career
       managerMoment: won,
     })
   } else if (newT.eliminated && !t.eliminated) {
+    if (newT.kind === 'WORLD_CUP') {
+      const fromEnd = rounds - 1 - t.roundIndex
+      lastWcOutcome = fromEnd === 0 ? 'FINAL' : fromEnd === 1 ? 'SEMI' : fromEnd === 2 ? 'QUARTER' : 'R16'
+    }
     news.push({
       id: `out-${newT.kind}-${career.season}-${t.roundIndex}`,
       year: career.year,
@@ -604,7 +694,7 @@ function stepTournament(career: Career, managerResult: TieResult | null): Career
     })
   }
 
-  return { ...career, tournament: newT, world, trophies, history, news: [...news, ...career.news].slice(0, 80) }
+  return { ...career, tournament: newT, world, trophies, history, reputation, lastWcOutcome, news: [...news, ...career.news].slice(0, 80) }
 }
 
 // Calendar-driven tournament lifecycle: create the summer finals at its deadline,
@@ -615,7 +705,7 @@ function progressTournament(career: Career): Career {
   if (slot && c.week === TOURNAMENT_DEADLINE_WEEK && !c.tournament) {
     const include = slot === 'WORLD_CUP' ? worldCupInclusion(c) : true
     const t = createTournament(slot, c.managerNationId, c.seed, c.season, include, c.world, c.wcHostId)
-    c = { ...c, tournament: t, news: [tournamentDrawNews(t, c), ...c.news].slice(0, 80) }
+    c = { ...c, tournament: t, lastWcOutcome: slot === 'WORLD_CUP' && !t.inField ? 'MISSED' : c.lastWcOutcome, news: [tournamentDrawNews(t, c), ...c.news].slice(0, 80) }
   }
 
   const t = c.tournament

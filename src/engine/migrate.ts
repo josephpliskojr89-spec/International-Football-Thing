@@ -88,6 +88,12 @@ export function migrateCareer(raw: unknown): Career {
     history: Array.isArray(c.history) ? c.history : [],
     legends: Array.isArray(c.legends) ? c.legends : [],
     record: c.record ?? { p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0 },
+    reputation: c.reputation ?? 40,
+    objective: c.objective ?? null,
+    lastWcOutcome: c.lastWcOutcome ?? null,
+    lastCampaignPosition: c.lastCampaignPosition ?? null,
+    offers: Array.isArray(c.offers) ? c.offers : [],
+    sackedFrom: c.sackedFrom ?? null,
     news: Array.isArray(c.news) ? c.news : [],
   }
 }

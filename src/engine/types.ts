@@ -186,7 +186,7 @@ export interface Trophy {
 // One line of the World Football Almanac — the alternate history a save writes.
 export interface HistoryEntry {
   season: number
-  type: 'WORLD_CUP' | 'CONTINENTAL' | 'FOREIGN_CONTINENTAL' | 'QUALIFIED' | 'MISSED' | 'POTY' | 'LEGEND' | 'HOST'
+  type: 'WORLD_CUP' | 'CONTINENTAL' | 'FOREIGN_CONTINENTAL' | 'QUALIFIED' | 'MISSED' | 'POTY' | 'LEGEND' | 'HOST' | 'JOB' | 'SACKED'
   text: string
   nationId?: string // principal nation (champion / host / your nation)
   managerMoment?: boolean // it happened to YOU — highlighted in the almanac
@@ -254,6 +254,14 @@ export interface Career {
   history: HistoryEntry[] // the World Football Almanac (append-only)
   legends: Legend[] // retired greats of your nation
   record: ManagerRecord // your all-time competitive record
+
+  // ---- the manager's career ----
+  reputation: number // 0..100 — the world's opinion of you as a manager
+  objective: { text: string; tier: number } | null // the board's demand for this cycle
+  lastWcOutcome: 'WON' | 'FINAL' | 'SEMI' | 'QUARTER' | 'R16' | 'MISSED' | null // last cycle's WC verdict
+  lastCampaignPosition: number | null // final group position of the last completed campaign
+  offers: string[] // nations currently offering you their job
+  sackedFrom: string | null // set when the board fires you — pick an offer to continue
 
   news: NewsItem[]
 }

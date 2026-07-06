@@ -15,6 +15,7 @@ import { StandingsScreen } from './screens/StandingsScreen'
 import { BracketScreen } from './screens/BracketScreen'
 import { RankingsScreen } from './screens/RankingsScreen'
 import { LegacyScreen } from './screens/LegacyScreen'
+import { OffersScreen } from './screens/OffersScreen'
 
 export function App() {
   const route = useGame((s) => s.route)
@@ -63,6 +64,8 @@ export function App() {
       return <RankingsScreen />
     case 'legacy':
       return <LegacyScreen />
+    case 'offers':
+      return <OffersScreen />
     default:
       return <TitleScreen />
   }
