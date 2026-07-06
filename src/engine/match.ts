@@ -22,7 +22,7 @@ export interface MatchTeam {
 
 export interface MatchEventLog {
   minute: number
-  type: 'GOAL' | 'INJURY'
+  type: 'GOAL' | 'INJURY' | 'YELLOW' | 'RED'
   side: 'home' | 'away'
   playerId: string
   playerName: string
@@ -94,6 +94,7 @@ export function simulateMatch(home: MatchTeam, away: MatchTeam, seed: number): M
   const scorersHome = assignScorers(home, homeGoals, rng)
   const scorersAway = assignScorers(away, awayGoals, rng)
   const injuries = rollInjuries(home, away, rng)
+  const cards = rollCards(home, away, rng)
 
   const events: MatchEventLog[] = [
     ...scorersHome.map((s) => ({
@@ -111,6 +112,7 @@ export function simulateMatch(home: MatchTeam, away: MatchTeam, seed: number): M
       playerName: s.name,
     })),
     ...injuries,
+    ...cards,
   ].sort((a, b) => a.minute - b.minute)
 
   const ratingsHome = playerRatings(home, homeGoals, awayGoals, scorersHome, edgeHome >= 1, rng)
@@ -275,6 +277,32 @@ function positionScoringBias(pos: Position): number {
     case 'GK':
       return 0.01
   }
+}
+
+// Discipline: bookings fall mostly on defenders and midfielders (the tackling
+// trades); the rare red card changes a tournament. Rolled as narrative — the
+// scoreline stands — but suspensions carry REAL consequences downstream.
+function rollCards(home: MatchTeam, away: MatchTeam, rng: RNG): MatchEventLog[] {
+  const out: MatchEventLog[] = []
+  for (const [team, side] of [
+    [home, 'home'],
+    [away, 'away'],
+  ] as const) {
+    let reds = 0
+    for (const p of Object.values(team.playerBySlot)) {
+      if (!p) continue
+      const yellowP = p.position === 'DF' ? 0.13 : p.position === 'MF' ? 0.11 : p.position === 'FW' ? 0.07 : 0.03
+      if (rng.next() < yellowP) {
+        out.push({ minute: rng.int(15, 90), type: 'YELLOW', side, playerId: p.id, playerName: p.name })
+        // A booked defender walking the line: small chance it becomes two.
+        if (reds === 0 && rng.next() < 0.05) {
+          reds++
+          out.push({ minute: rng.int(55, 92), type: 'RED', side, playerId: p.id, playerName: p.name })
+        }
+      }
+    }
+  }
+  return out
 }
 
 function rollInjuries(home: MatchTeam, away: MatchTeam, rng: RNG): MatchEventLog[] {

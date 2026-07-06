@@ -132,6 +132,17 @@ export function matchStory(result: MatchResult, managerIsHome: boolean, week?: n
     lines.push(`One side will call it a point ${xgGap > 0 ? 'lost' : 'stolen'} — the xG (${myXg.toFixed(1)}–${oppXg.toFixed(1)}) explains which.`)
   }
 
+  // 3b) A red card is always part of the story.
+  const red = result.events.find((e) => e.type === 'RED')
+  if (red) {
+    const redMine = (red.side === 'home') === managerIsHome
+    lines.push(
+      redMine
+        ? `The game turned on ${red.playerName}'s red card on ${red.minute}' — ten men, and everything got harder.`
+        : `${oppName} lost ${red.playerName} to a red card on ${red.minute}', and the space opened up.`,
+    )
+  }
+
   // 4) The stretcher, if any (on either side, it changes matches).
   const injury = result.events.find((e) => e.type === 'INJURY' && (e.side === 'home') === managerIsHome)
   if (injury) {

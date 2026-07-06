@@ -71,6 +71,8 @@ export function createCareer(input: NewCareerInput): Career {
     lastCampaignPosition: null,
     offers: [],
     sackedFrom: null,
+    tourneyCards: {},
+    suspendedIds: [],
     playoffPending: false,
     h2h: {},
     eraStartSeason: 1,

@@ -270,6 +270,21 @@ Audit closure + the "alternate football history" layer:
 - Weather in the match stories: deterministic from the calendar — winter
   qualifiers open in sleet and frost, summer finals in punishing heat.
 
+### Milestone 15 — discipline & silly season (done)
+- Cards in the match engine (YELLOW/RED events; bookings fall on the tackling
+  trades, reds rare) and in the match stories ("The game turned on his red
+  card — ten men, and everything got harder").
+- Tournament suspensions with REAL bite: yellows accumulate across a finals
+  (two = banned for the next match, slate wiped after), straight reds ban
+  immediately; suspended players are swapped out at kickoff like injuries and
+  the ban is served. News narrates every booking, ban and reshuffle. Slate
+  cleared when each tournament starts.
+- Silly season: in the off-summer of qualifying years (weeks 28-32) the back
+  pages fill with transfer speculation that tracks the SAME players the market
+  logic will actually move when the window opens at 33-35.
+- Confirmed: the shared club universe already holds — world squads use the
+  same nationality-aware club assignment as your pool.
+
 ### Not yet built (next milestones)
 1. Confederation-specific qualifying formats (league/hex/group variants) and
    inter-confederation playoffs.

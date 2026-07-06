@@ -272,6 +272,8 @@ export interface Career {
   lastCampaignPosition: number | null // final group position of the last completed campaign
   offers: string[] // nations currently offering you their job
   sackedFrom: string | null // set when the board fires you — pick an offer to continue
+  tourneyCards: Record<string, number> // yellow tally across the CURRENT finals (2 = ban)
+  suspendedIds: string[] // players banned for your next finals match
   playoffPending: boolean // finished 3rd in qualifying: one playoff match for the World Cup
   h2h: Record<string, { w: number; d: number; l: number }> // your duel record vs each nation
   eraStartSeason: number // when THIS manager's era began (succession keeps the world)

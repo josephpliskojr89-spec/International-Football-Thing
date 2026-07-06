@@ -799,7 +799,13 @@ function resolveTournament(career: Career): { next: Career; result: MatchResult 
   // Venue: finals are neutral ground unless one side is the World Cup host.
   const iHost = t.kind === 'WORLD_CUP' && t.hostId === career.managerNationId
   const oppHosts = t.kind === 'WORLD_CUP' && t.hostId === opponent.id
-  const managerTeam = buildManagerTeam(career, iHost)
+  // Suspended players sit this one out: treat them as unavailable at kickoff
+  // (the bench steps in), then the ban is served.
+  const suspendedSet = new Set(career.suspendedIds)
+  const careerForKickoff = suspendedSet.size
+    ? { ...career, players: career.players.map((p) => (suspendedSet.has(p.id) ? { ...p, injuredWeeks: Math.max(1, p.injuredWeeks) } : p)) }
+    : career
+  const managerTeam = buildManagerTeam(careerForKickoff, iHost)
   const opponentTeam = buildOpponentTeam(opponent, career.seed, oppHosts, career.season, ratingOf(career.world, opponent.id))
   const home = isHome ? managerTeam : opponentTeam
   const away = isHome ? opponentTeam : managerTeam
@@ -807,6 +813,34 @@ function resolveTournament(career: Career): { next: Career; result: MatchResult 
   const result = simulateMatch(home, away, seed)
 
   const { players, aftermathNews } = applySquadAfterMatch(career, result, isHome, true)
+
+  // Discipline desk: my side's cards accumulate across the tournament. Two
+  // yellows = banned for the next match; a straight red = the same. Bans just
+  // served are cleared.
+  const mySide = isHome ? 'home' : 'away'
+  let tourneyCards = { ...career.tourneyCards }
+  let suspendedIds: string[] = [] // fresh: bans from THIS match only (old ones served today)
+  const nextRoundLabel = 'the next match'
+  for (const e of result.events) {
+    if (e.side !== mySide) continue
+    const pName = e.playerName
+    if (e.type === 'RED') {
+      if (!suspendedIds.includes(e.playerId)) suspendedIds.push(e.playerId)
+      aftermathNews.push(mkStoreNews(`red-${e.playerId}-${career.week}`, career, 'SUSPENSION', 0.85,
+        `RED CARD: ${pName} was sent off — he is SUSPENDED for ${nextRoundLabel}. The dressing room went quiet.`))
+    } else if (e.type === 'YELLOW') {
+      tourneyCards[e.playerId] = (tourneyCards[e.playerId] ?? 0) + 1
+      if (tourneyCards[e.playerId] === 2) {
+        if (!suspendedIds.includes(e.playerId)) suspendedIds.push(e.playerId)
+        tourneyCards[e.playerId] = 0 // slate wiped after the ban
+        aftermathNews.push(mkStoreNews(`accum-${e.playerId}-${career.week}`, career, 'SUSPENSION', 0.8,
+          `${pName} picks up his second booking of the tournament — SUSPENDED for ${nextRoundLabel}. Reshuffle time.`))
+      } else if (tourneyCards[e.playerId] === 1) {
+        aftermathNews.push(mkStoreNews(`yellow-${e.playerId}-${career.week}`, career, 'BOOKING', 0.4,
+          `${pName} goes into the book — one more yellow this tournament and he misses a match.`))
+      }
+    }
+  }
 
   const myRating = ratingOf(career.world, career.managerNationId)
   const oppRating = ratingOf(career.world, opponent.id)
@@ -827,7 +861,7 @@ function resolveTournament(career: Career): { next: Career; result: MatchResult 
   const mine = isHome ? result.homeGoals : result.awayGoals
   const theirs = isHome ? result.awayGoals : result.homeGoals
   const next = stepTournament(
-    { ...career, players, record: updateRecord(career.record, mine, theirs), h2h: updateH2h(career.h2h, opponent.id, mine, theirs) },
+    { ...career, players, tourneyCards, suspendedIds, record: updateRecord(career.record, mine, theirs), h2h: updateH2h(career.h2h, opponent.id, mine, theirs) },
     tieResult,
   )
   // The manager's own match also gets a headline.
@@ -972,7 +1006,7 @@ function progressTournament(career: Career): Career {
     const include = slot === 'WORLD_CUP' ? worldCupInclusion(c) : true
     const t = createTournament(slot, c.managerNationId, c.seed, c.season, include, c.world, c.wcHostId)
     goalsAtTournamentStart = Object.fromEntries(c.players.map((p) => [p.id, p.intlGoals]))
-    c = { ...c, tournament: t, lastWcOutcome: slot === 'WORLD_CUP' && !t.inField ? 'MISSED' : c.lastWcOutcome, news: [tournamentDrawNews(t, c), ...c.news].slice(0, 80) }
+    c = { ...c, tourneyCards: {}, suspendedIds: [], tournament: t, lastWcOutcome: slot === 'WORLD_CUP' && !t.inField ? 'MISSED' : c.lastWcOutcome, news: [tournamentDrawNews(t, c), ...c.news].slice(0, 80) }
   }
 
   const t = c.tournament

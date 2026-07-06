@@ -2,7 +2,7 @@ import type { Career, NewsItem, Player, WorldState } from './types'
 import { WEEKS_PER_YEAR } from '@/data/constants'
 import { RNG, deriveSeed } from './rng'
 import { ALL_NATIONS_BY_ID, NATIONS_BY_ID, CONFEDERATION_NAMES } from '@/data/nations'
-import { windowAtWeek, displayYear } from '@/data/windows'
+import { windowAtWeek, displayYear, qualifiersActiveInYear } from '@/data/windows'
 import { developPlayerWeek, agePlayerOneYear } from './development'
 import { assignClub } from './playerGen'
 import { LEAGUES_BY_NAME } from '@/data/leagues'
@@ -307,6 +307,28 @@ export function advanceWeek(career: Career): Career {
             : `${p.name} picked up a knock playing for ${p.club} — expected back within ${weeks === 1 ? 'the week' : `${weeks} weeks`}.`))
       return { ...p, injuredWeeks: weeks }
     })
+  }
+
+  // 4c-ii) Silly season: in the off-summer of qualifying years (no finals),
+  // weeks 28-32 fill with transfer speculation that foreshadows the REAL window
+  // at 33-35 — the rumors track the same players the market logic will move.
+  if (qualifiersActiveInYear(year) && week >= 28 && week <= 32) {
+    const rumorRng = new RNG(deriveSeed(career.seed, season, week, 0x51117))
+    if (rumorRng.bool(0.5)) {
+      const linked = players.filter((p) => {
+        const tier = LEAGUES_BY_NAME[p.clubLeague]?.tier ?? 4
+        return p.eligibilityState !== 'LOST' && ((p.overall >= 82 && tier >= 3) || (p.overall >= 85 && tier === 2))
+      })
+      if (linked.length > 0) {
+        const p2 = linked[rumorRng.int(0, linked.length - 1)]
+        news.push(mkNews(`rumor-${p2.id}-${season}-${week}`, year, week, 'SILLY_SEASON', 0.45,
+          rumorRng.pick([
+            `Silly season: ${p2.name} is being strongly linked with a move up from ${p2.club}. Expect news when the window opens.`,
+            `The back pages have ${p2.name} agitating for a bigger stage than ${p2.club}. Watch the late-summer window.`,
+            `Agents talk: ${p2.name}'s people have been seen in three countries this month. ${p2.club} are bracing themselves.`,
+          ])))
+      }
+    }
   }
 
   // 4d) Transfer windows (weeks 2-4 in winter, 33-35 in late summer): players
