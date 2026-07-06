@@ -217,6 +217,20 @@ Audit closure + the "alternate football history" layer:
   different name on the trophy because you exist." Only possible because every
   system in the game is seeded and reproducible.
 
+### Milestone 11 — the storyteller & Succession (done)
+- Match commentary (`engine/matchStory.ts`): every full-time screen gets a
+  written story derived deterministically from the result's own events —
+  comebacks, collapses, routs, late winners ("the kind of minute that gets
+  named after a player"), xG verdicts (smash-and-grab / football owes you
+  one), stretcher worries, MOTM praise. Fixed a regression where the Full
+  Time screen was unreachable (result render now precedes the no-match guard).
+- SUCCESSION (New Game+): retire via The Final Whistle and hand the SAME world
+  to a new manager — same seed (generational rivals continue mid-career),
+  evolved ratings/trends, the full almanac and Pantheon inherited; new nation,
+  fresh reputation, era-scoped Ghost comparisons (`eraStartSeason`). One
+  timeline, many managers.
+- Golden Boot: your tournament top scorer named when a finals concludes.
+
 ### Not yet built (next milestones)
 1. Confederation-specific qualifying formats (league/hex/group variants) and
    inter-confederation playoffs.

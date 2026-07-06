@@ -73,6 +73,7 @@ export function createCareer(input: NewCareerInput): Career {
     sackedFrom: null,
     playoffPending: false,
     h2h: {},
+    eraStartSeason: 1,
     news: [
       {
         id: 'welcome',

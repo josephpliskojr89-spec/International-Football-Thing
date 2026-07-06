@@ -68,6 +68,7 @@ export function worldCupDivergence(career: Career): Divergence[] {
   const out: Divergence[] = []
   for (const g of ghosts) {
     if (!g.wcChampion) continue
+    if (g.season < career.eraStartSeason) continue // a predecessor's era isn't yours to claim
     const real = career.history.find((h) => h.type === 'WORLD_CUP' && h.season === g.season)
     out.push({
       season: g.season,

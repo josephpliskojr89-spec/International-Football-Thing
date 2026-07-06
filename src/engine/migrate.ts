@@ -96,6 +96,7 @@ export function migrateCareer(raw: unknown): Career {
     sackedFrom: c.sackedFrom ?? null,
     playoffPending: !!c.playoffPending,
     h2h: c.h2h ?? {},
+    eraStartSeason: c.eraStartSeason ?? 1,
     news: Array.isArray(c.news) ? c.news : [],
   }
 }

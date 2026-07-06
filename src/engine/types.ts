@@ -273,6 +273,7 @@ export interface Career {
   sackedFrom: string | null // set when the board fires you — pick an offer to continue
   playoffPending: boolean // finished 3rd in qualifying: one playoff match for the World Cup
   h2h: Record<string, { w: number; d: number; l: number }> // your duel record vs each nation
+  eraStartSeason: number // when THIS manager's era began (succession keeps the world)
 
   news: NewsItem[]
 }

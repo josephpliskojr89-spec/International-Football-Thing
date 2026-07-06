@@ -14,6 +14,7 @@ import { createCampaign } from '@/engine/campaign'
 import { generateManagerPool } from '@/engine/playerGen'
 import { cycleObjective } from '@/engine/manager'
 import {
+  pickWorldCupHost as pickWorldCupHostFor,
   createTournament,
   managerStep,
   resolveTournamentRound,
@@ -60,10 +61,23 @@ export type Route =
   | 'final-whistle'
   | 'ghost'
 
+// What a retiring manager hands to their successor: the WORLD, not the office.
+interface SuccessionPayload {
+  seed: number
+  world: Career['world']
+  history: Career['history']
+  legends: Career['legends']
+  season: number
+  prevHostId: string | null
+  prevManagerName: string
+}
+
 interface GameState {
   route: Route
   career: Career | null
   hydrated: boolean
+  succession: SuccessionPayload | null
+  beginSuccession: () => void
 
   go: (route: Route) => void
   startNewCareer: (input: NewCareerInput) => Promise<void>
@@ -128,6 +142,30 @@ export const useGame = create<GameState>((set, get) => ({
   route: 'title',
   career: null,
   hydrated: false,
+  succession: null,
+
+  // Retire — but the world doesn't reset. Your successor inherits the almanac,
+  // the eras, the evolved ratings, even the rival players mid-career (same
+  // seed, so every generational identity continues seamlessly). One timeline,
+  // many managers. This is New Game+ the way football actually works.
+  beginSuccession: () => {
+    const { career } = get()
+    if (!career) return
+    // Hand over at the next cycle boundary: history stays clean.
+    const seasonsToCycleEnd = 5 - career.year
+    set({
+      succession: {
+        seed: career.seed,
+        world: career.world,
+        history: career.history,
+        legends: career.legends,
+        season: career.season + seasonsToCycleEnd,
+        prevHostId: career.wcHostId,
+        prevManagerName: career.managerName,
+      },
+      route: 'new-game',
+    })
+  },
 
   go: (route) => set({ route }),
 
@@ -138,7 +176,55 @@ export const useGame = create<GameState>((set, get) => ({
   },
 
   startNewCareer: async (input) => {
-    const career = createCareer(input)
+    let career = createCareer(input)
+    const inherit = get().succession
+    if (inherit) {
+      // Same seed = the same living world: generational squads, hosts and
+      // ghost timelines all continue. New season, new cycle, new you.
+      const cycleNum = Math.ceil(inherit.season / 4) + 1
+      career = {
+        ...career,
+        seed: inherit.seed,
+        world: inherit.world,
+        legends: inherit.legends,
+        season: inherit.season,
+        year: 1,
+        week: 1,
+        eraStartSeason: inherit.season,
+        campaign: createCampaign(input.nationId, inherit.seed, cycleNum, inherit.world),
+        wcHostId: pickWorldCupHostFor(input.nationId, inherit.seed, cycleNum, inherit.prevHostId),
+        objective: cycleObjective(inherit.world, input.nationId),
+        reputation: 35,
+        players: generateManagerPool(ALL_NATIONS_BY_ID[input.nationId], deriveSeed(inherit.seed, hashStr(input.nationId), inherit.season)),
+        history: [
+          ...inherit.history,
+          {
+            season: inherit.season,
+            type: 'JOB',
+            text: `A new era: ${career.managerName} succeeds ${inherit.prevManagerName} in international football, taking charge of ${ALL_NATIONS_BY_ID[input.nationId].name}`,
+            nationId: input.nationId,
+            managerMoment: true,
+          },
+        ],
+        news: [
+          {
+            id: `succession-${inherit.season}`,
+            week: 1,
+            year: 1,
+            type: 'APPOINTMENT',
+            magnitude: 1,
+            text: `The ${inherit.prevManagerName} era is over. The world ${inherit.prevManagerName} shaped — its champions, its risen and fallen powers — is now yours to inherit. No pressure.`,
+          },
+          ...career.news,
+        ],
+      }
+      // Squad/lineup must come from the inherited-seed pool.
+      const lineup = autoFillLineup(career.players, career.formation, career.style)
+      const xiIds = Object.values(lineup).filter(Boolean) as string[]
+      const bench = autoFillBench(career.players, lineup, career.style)
+      career = { ...career, lineup, bench, registeredSquad: [...new Set([...xiIds, ...bench])] }
+      set({ succession: null })
+    }
     set({ career, route: 'schedule' })
     await saveCareer(career)
   },
@@ -787,6 +873,16 @@ function stepTournament(career: Career, managerResult: TieResult | null): Career
     })
     if (won) trophies = [...trophies, { kind: newT.kind, name: newT.name, season: career.season } as Trophy]
     if (won) reputation = clampRep(career.reputation + (newT.kind === 'WORLD_CUP' ? 25 : 12))
+    // Your Golden Boot: who carried the goals through this tournament?
+    if (newT.inField) {
+      const boot = career.players
+        .map((p) => ({ p, g: p.intlGoals - (goalsAtTournamentStart[p.id] ?? p.intlGoals) }))
+        .sort((a, b) => b.g - a.g)[0]
+      if (boot && boot.g >= 2) {
+        news.push(mkStoreNews(`boot-${newT.kind}-${career.season}`, career, 'GOLDEN_BOOT', 0.7,
+          `⚽ Your boots of the summer: ${boot.p.name} finished the ${newT.name} with ${boot.g} goals.`))
+      }
+    }
     if (newT.kind === 'WORLD_CUP' && newT.inField) {
       lastWcOutcome = won ? 'WON' : career.managerNationId === runnerUpId ? 'FINAL' : lastWcOutcome
     }
@@ -819,6 +915,11 @@ function ordinalPos(n: number): string {
   return ['', '1st', '2nd', '3rd', '4th'][n] ?? `${n}th`
 }
 
+// Module-scope snapshot of squad goals when a finals tournament starts, so the
+// Golden Boot can be tallied at its end. Transient by design (recomputed if the
+// app reloads mid-tournament, the award just skips — acceptable).
+let goalsAtTournamentStart: Record<string, number> = {}
+
 // Calendar-driven tournament lifecycle: create the summer finals at its deadline,
 // and auto-resolve rounds the manager isn't playing (eliminated or didn't enter).
 function progressTournament(career: Career): Career {
@@ -827,6 +928,7 @@ function progressTournament(career: Career): Career {
   if (slot && c.week === TOURNAMENT_DEADLINE_WEEK && !c.tournament) {
     const include = slot === 'WORLD_CUP' ? worldCupInclusion(c) : true
     const t = createTournament(slot, c.managerNationId, c.seed, c.season, include, c.world, c.wcHostId)
+    goalsAtTournamentStart = Object.fromEntries(c.players.map((p) => [p.id, p.intlGoals]))
     c = { ...c, tournament: t, lastWcOutcome: slot === 'WORLD_CUP' && !t.inField ? 'MISSED' : c.lastWcOutcome, news: [tournamentDrawNews(t, c), ...c.news].slice(0, 80) }
   }
 

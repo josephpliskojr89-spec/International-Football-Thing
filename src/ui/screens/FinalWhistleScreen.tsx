@@ -11,6 +11,7 @@ export function FinalWhistleScreen() {
   const career = useGame((s) => s.career)!
   const go = useGame((s) => s.go)
   const abandonCareer = useGame((s) => s.abandonCareer)
+  const beginSuccession = useGame((s) => s.beginSuccession)
 
   const startNation = career.history.find((h) => h.type === 'JOB')
     ? null // took other jobs along the way
@@ -28,7 +29,7 @@ export function FinalWhistleScreen() {
   const potys = career.history.filter((h) => h.type === 'POTY' && h.managerMoment).length
   const rec = career.record
   const winPct = rec.p > 0 ? Math.round((rec.w / rec.p) * 100) : 0
-  const years = career.season
+  const years = career.season - career.eraStartSeason + 1
 
   const epitaph =
     wcs.length >= 2
@@ -55,7 +56,7 @@ export function FinalWhistleScreen() {
           <div style={{ fontSize: 34 }}>🎬</div>
           <div style={{ fontSize: 21, fontWeight: 900, marginTop: 6 }}>{career.managerName}</div>
           <div className="muted" style={{ fontSize: 13 }}>
-            {displayYear(1)}–{displayYear(career.season)} · {reputationLabel(career.reputation)}
+            {displayYear(career.eraStartSeason)}–{displayYear(career.season)} · {reputationLabel(career.reputation)}
           </div>
           <div style={{ fontSize: 15, marginTop: 12, fontStyle: 'italic', lineHeight: 1.5 }}>
             “{epitaph}”
@@ -92,9 +93,19 @@ export function FinalWhistleScreen() {
           ‹ Not yet — one more cycle
         </button>
         <button
+          className="btn btn--lg btn--block"
+          onClick={() => {
+            if (window.confirm('Retire and hand over? A NEW manager inherits this exact world — the almanac, the eras, the rivals — and your era becomes their history.')) {
+              beginSuccession()
+            }
+          }}
+        >
+          🔄 Retire & hand over — new manager, same world
+        </button>
+        <button
           className="btn btn--primary btn--lg btn--block"
           onClick={() => {
-            if (window.confirm('Hang it up for good? This retires the save and starts fresh.')) {
+            if (window.confirm('Hang it up for good? This retires the save and starts a completely fresh world.')) {
               void abandonCareer()
             }
           }}

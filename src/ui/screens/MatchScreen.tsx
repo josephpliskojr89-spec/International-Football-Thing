@@ -6,6 +6,7 @@ import { ratingOf, worldRankOf } from '@/engine/world'
 import { nationalManagerName } from '@/engine/manager'
 import { STYLE_LABELS } from '@/data/tactics'
 import type { MatchResult } from '@/engine/match'
+import { matchStory } from '@/engine/matchStory'
 
 export function MatchScreen() {
   const career = useGame((s) => s.career)!
@@ -21,6 +22,12 @@ export function MatchScreen() {
   // Capture the played-match venue at kickoff: after playing, `career` advances
   // to the next fixture, so the result view must not re-read the live fixture.
   const [playedHome, setPlayedHome] = useState(false)
+
+  // Result FIRST: after kickoff the fixture is consumed (currentMatch goes
+  // null), but the full-time screen must still show. Guard order is load-bearing.
+  if (result) {
+    return <MatchResultView result={result} managerIsHome={playedHome} onDone={() => go('schedule')} />
+  }
 
   if (!match) {
     return (
@@ -43,10 +50,6 @@ export function MatchScreen() {
   const opp = ALL_NATIONS_BY_ID[match.opponentId]
   const isTournament = match.type === 'TOURNAMENT'
   const compLabel = isTournament ? `${match.label} · ${match.round}` : match.label
-
-  if (result) {
-    return <MatchResultView result={result} managerIsHome={playedHome} onDone={() => go('schedule')} />
-  }
 
   const kickOff = () => {
     const r = playCurrentMatch()
@@ -181,6 +184,11 @@ function MatchResultView({
               ))}
             </div>
           </div>
+        </div>
+
+        <div className="card" style={{ fontSize: 14, lineHeight: 1.6 }}>
+          <div className="field-label">The story of the match</div>
+          <div style={{ marginTop: 4 }}>{matchStory(result, managerIsHome)}</div>
         </div>
 
         <StatBar label="Possession" home={result.possessionHome} away={100 - result.possessionHome} unit="%" />
