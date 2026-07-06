@@ -22,11 +22,12 @@ export function MatchScreen() {
   // Capture the played-match venue at kickoff: after playing, `career` advances
   // to the next fixture, so the result view must not re-read the live fixture.
   const [playedHome, setPlayedHome] = useState(false)
+  const [playedWeek, setPlayedWeek] = useState(1)
 
   // Result FIRST: after kickoff the fixture is consumed (currentMatch goes
   // null), but the full-time screen must still show. Guard order is load-bearing.
   if (result) {
-    return <MatchResultView result={result} managerIsHome={playedHome} onDone={() => go('schedule')} />
+    return <MatchResultView result={result} managerIsHome={playedHome} week={playedWeek} onDone={() => go('schedule')} />
   }
 
   if (!match) {
@@ -55,6 +56,7 @@ export function MatchScreen() {
     const r = playCurrentMatch()
     if (r) {
       setPlayedHome(isHome) // captured before career advances
+      setPlayedWeek(career.week)
       setResult(r)
     }
   }
@@ -140,10 +142,12 @@ function DugoutLine({ career, oppId }: { career: import('@/engine/types').Career
 function MatchResultView({
   result,
   managerIsHome,
+  week,
   onDone,
 }: {
   result: MatchResult
   managerIsHome: boolean
+  week: number
   onDone: () => void
 }) {
   const mine = managerIsHome ? result.homeGoals : result.awayGoals
@@ -188,7 +192,7 @@ function MatchResultView({
 
         <div className="card" style={{ fontSize: 14, lineHeight: 1.6 }}>
           <div className="field-label">The story of the match</div>
-          <div style={{ marginTop: 4 }}>{matchStory(result, managerIsHome)}</div>
+          <div style={{ marginTop: 4 }}>{matchStory(result, managerIsHome, week)}</div>
         </div>
 
         <StatBar label="Possession" home={result.possessionHome} away={100 - result.possessionHome} unit="%" />

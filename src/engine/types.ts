@@ -68,6 +68,7 @@ export interface Player {
   injuredWeeks: number // 0 = fit; >0 = ruled out that many more weeks
   caps: number // international appearances for YOUR nation
   intlGoals: number // international goals for YOUR nation
+  announcedRetirement: boolean // "this is my last year" — retires at season's end
 }
 
 export interface Nation {

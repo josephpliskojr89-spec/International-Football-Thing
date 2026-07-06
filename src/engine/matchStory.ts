@@ -11,7 +11,29 @@ function pick<T>(arr: T[], key: string): T {
   return arr[hashStr(key) % arr.length]
 }
 
-export function matchStory(result: MatchResult, managerIsHome: boolean): string {
+// Deterministic weather from the calendar: winter qualifiers are played in
+// sleet, summer finals in heat. Pure scene-setting — the engine doesn't care,
+// but the story should.
+function weatherLine(week: number, key: string): string | null {
+  if (hashStr(key + 'wx') % 10 < 4) return null // most days are just days
+  if (week >= 44 || week <= 9) {
+    return pick([
+      'On a freezing night with sleet in the floodlights,',
+      'On a pitch more frost than grass,',
+      'In swirling winter rain,',
+    ], key + 'cold')
+  }
+  if (week >= 20 && week <= 35) {
+    return pick([
+      'In punishing afternoon heat,',
+      'On a heavy, humid evening,',
+      'Under a merciless summer sun,',
+    ], key + 'hot')
+  }
+  return pick(['Under lights on a mild evening,', 'On a fast spring surface,'], key + 'mild')
+}
+
+export function matchStory(result: MatchResult, managerIsHome: boolean, week?: number): string {
   const mine = managerIsHome ? result.homeGoals : result.awayGoals
   const theirs = managerIsHome ? result.awayGoals : result.homeGoals
   const myName = managerIsHome ? result.homeName : result.awayName
@@ -25,6 +47,7 @@ export function matchStory(result: MatchResult, managerIsHome: boolean): string 
     .sort((a, b) => a.minute - b.minute)
 
   const lines: string[] = []
+  const wx = week !== undefined ? weatherLine(week, key) : null
 
   // Track the running score from MY perspective for comeback/collapse detection.
   let m = 0
@@ -120,5 +143,8 @@ export function matchStory(result: MatchResult, managerIsHome: boolean): string 
     lines.push(`${result.motm.name} was the best player on the pitch, and it wasn't close.`)
   }
 
-  return lines.join(' ')
+  const body = lines.join(' ')
+  // The opener always begins with a team name — keep it capitalized after the
+  // weather clause ("On a freezing night, England came from behind...").
+  return wx ? `${wx} ${body}` : body
 }

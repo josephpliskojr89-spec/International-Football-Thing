@@ -136,5 +136,6 @@ function migratePlayer(raw: unknown): Player {
     injuredWeeks: p.injuredWeeks ?? 0,
     caps: p.caps ?? 0,
     intlGoals: p.intlGoals ?? 0,
+    announcedRetirement: !!p.announcedRetirement,
   }
 }

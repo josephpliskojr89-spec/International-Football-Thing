@@ -6,6 +6,7 @@ import { windowAtWeek, displayYear } from '@/data/windows'
 import { developPlayerWeek, agePlayerOneYear } from './development'
 import { assignClub } from './playerGen'
 import { LEAGUES_BY_NAME } from '@/data/leagues'
+import { clubArc, arcFormDrift, arcPhrase, arcOutcome } from './clubs'
 import { applyCoverageWeek } from './scouting'
 import { generateYouthIntake } from './youth'
 import { autoFillLineup } from './career'
@@ -105,13 +106,16 @@ export function advanceWeek(career: Career): Career {
     let next = developPlayerWeek(p, rng)
     if (p.inPersonOverall !== null) next = { ...next, inPersonWeeks: p.inPersonWeeks + 1 }
     if (p.injuredWeeks > 0) next = { ...next, injuredWeeks: p.injuredWeeks - 1 }
+    // A club's season seeps into a player: title races lift, dogfights grind.
+    const drift = arcFormDrift(clubArc(p.club, season, career.seed))
+    if (drift !== 0) next = { ...next, form: Math.max(20, Math.min(99, next.form + drift)) }
     return next
   })
 
   // 2) Season rollover: age everyone, retire the old, bring in a new youth class.
   if (rolledSeason) {
     players = players.map(agePlayerOneYear)
-    const retiring = players.filter((p) => p.age >= 36 && rng.bool(0.5 + (p.age - 36) * 0.15))
+    const retiring = players.filter((p) => p.announcedRetirement || (p.age >= 36 && rng.bool(0.5 + (p.age - 36) * 0.15)))
     for (const r of retiring.slice(0, 3)) {
       news.push(mkNews(`retire-${r.id}-${season}`, year, week, 'RETIREMENT', 0.5, `${r.name} has announced his retirement from international football.`))
     }
@@ -146,6 +150,40 @@ export function advanceWeek(career: Career): Career {
           `Excitement is building around ${nation.name}: this year's crop of teenagers is being called a golden generation. Time will tell — and the smart move is to start watching closely.`,
         ),
       )
+    }
+  }
+
+  // 2b-ii) Season fallout & farewells (rollover only).
+  if (rolledSeason) {
+    // One last dance: a veteran may tell you this season is his final one.
+    const annRng = new RNG(deriveSeed(career.seed, season, 0xfa2e))
+    const vets = players.filter(
+      (p) => !p.announcedRetirement && career.registeredSquad.includes(p.id) && ((p.age >= 33 && p.caps >= 40) || p.age >= 35),
+    )
+    if (vets.length > 0 && annRng.bool(0.5)) {
+      const v = vets[annRng.int(0, vets.length - 1)]
+      players = players.map((p) => (p.id === v.id ? { ...p, announcedRetirement: true } : p))
+      news.push(mkNews(`lastdance-${v.id}`, year, week, 'FAREWELL', 0.85,
+        `${v.name} (${v.caps} caps) has told you privately: this is his last year. Whatever this season holds, it's his final dance — send him out right.`))
+    }
+
+    // Club season verdicts: your players' clubs won titles or went down.
+    const clubs = [...new Set(players.filter((p) => career.registeredSquad.includes(p.id)).map((p) => p.club))]
+    let clubNews = 0
+    for (const club of clubs) {
+      if (clubNews >= 2) break
+      const outcome = arcOutcome(club, season - 1, career.seed)
+      if (!outcome) continue
+      const affected = players.filter((p) => p.club === club && career.registeredSquad.includes(p.id))
+      if (affected.length === 0) continue
+      clubNews++
+      const names = affected.slice(0, 2).map((p) => p.name).join(' and ')
+      const lift = outcome === 'CHAMPIONS' ? 6 : -6
+      players = players.map((p) => (p.club === club ? { ...p, form: Math.max(20, Math.min(99, p.form + lift)) } : p))
+      news.push(mkNews(`clubseason-${club}-${season}`, year, week, 'CLUB_SEASON', 0.6,
+        outcome === 'CHAMPIONS'
+          ? `${club} are champions — ${names} will arrive at the next camp with medals and swagger.`
+          : `${club} have been RELEGATED. ${names} will turn up carrying a bruising year; handle with care.`))
     }
   }
 
@@ -509,7 +547,9 @@ function clubWatchNews(players: Player[], career: Career, year: number, week: nu
     const p = rng.pick(weighted)
     if (used.has(p.id)) continue
     used.add(p.id)
-    out.push(mkNews(`clubwatch-${p.id}-${year}-${week}`, year, week, 'CLUB_WATCH', 0.35, clubLine(p, rng)))
+    const arc = clubArc(p.club, career.season, career.seed)
+    const line = rng.bool(0.35) && arc !== 'MID' ? `${clubLine(p, rng)} (${arcPhrase(arc)}.)` : clubLine(p, rng)
+    out.push(mkNews(`clubwatch-${p.id}-${year}-${week}`, year, week, 'CLUB_WATCH', 0.35, line))
   }
   return out
 }

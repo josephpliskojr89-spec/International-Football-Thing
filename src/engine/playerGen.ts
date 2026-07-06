@@ -167,6 +167,7 @@ export function generatePlayer(opts: GenPlayerOpts): Player {
     injuredWeeks: 0,
     caps: 0,
     intlGoals: 0,
+    announcedRetirement: false,
   }
 }
 

@@ -258,6 +258,18 @@ Audit closure + the "alternate football history" layer:
   read from real club form — pick your 26 informed.
 - (Scouting league picker already showed per-league pool counts + freshness.)
 
+### Milestone 14 — season arcs, farewells & weather (done)
+- Club season arcs (`engine/clubs.ts`): every club lives a deterministic
+  season-long story (title race / European push / mid-table / relegation
+  dogfight). Weekly form drifts with it, club-watch dispatches reference it,
+  and at season's end titles are won and clubs go down — your players arrive
+  at camp with medals and swagger, or carrying a bruising year.
+- One last dance: a squad veteran may privately announce his final year at
+  season start ("send him out right") — and he WILL retire at its end,
+  guaranteed, flowing into the Pantheon as usual.
+- Weather in the match stories: deterministic from the calendar — winter
+  qualifiers open in sleet and frost, summer finals in punishing heat.
+
 ### Not yet built (next milestones)
 1. Confederation-specific qualifying formats (league/hex/group variants) and
    inter-confederation playoffs.
