@@ -37,10 +37,19 @@ export function buildManagerTeam(career: Career, isHome: boolean): MatchTeam {
   }
 }
 
-// Opponent squad is regenerated deterministically (same seed scheme as the
-// manager's), so we never need to persist every nation's squad.
-export function buildOpponentTeam(opponent: Nation, careerSeed: number, isHome: boolean): MatchTeam {
-  const squad = generateSquadForNation(opponent, careerSeed)
+// Opponent squad is regenerated deterministically from (seed, season, dynamic
+// rating), so we never persist every nation's squad — but the squad still ages,
+// turns over and tracks the nation's current strength (see generational squads
+// in playerGen). Pass `season` and the world's current `rating` wherever a
+// Career is in scope; the defaults only exist for isolated engine tests.
+export function buildOpponentTeam(
+  opponent: Nation,
+  careerSeed: number,
+  isHome: boolean,
+  season = 1,
+  rating = opponent.nationRating,
+): MatchTeam {
+  const squad = generateSquadForNation(opponent, careerSeed, season, rating)
   const formationId = IDENTITY_FORMATION[opponent.tacticalIdentity]
   const lineup = autoFillLineup(squad, formationId, {
     formation: formationId,

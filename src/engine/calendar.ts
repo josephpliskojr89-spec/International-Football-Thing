@@ -1,18 +1,25 @@
-import type { Career, NewsItem, Player } from './types'
+import type { Career, NewsItem, Player, WorldState } from './types'
 import { WEEKS_PER_YEAR } from '@/data/constants'
 import { RNG, deriveSeed } from './rng'
-import { NATIONS_BY_ID } from '@/data/nations'
+import { ALL_NATIONS_BY_ID, NATIONS_BY_ID, CONFEDERATION_NAMES } from '@/data/nations'
+import { windowAtWeek } from '@/data/windows'
 import { developPlayerWeek, agePlayerOneYear } from './development'
 import { applyCoverageWeek } from './scouting'
 import { generateYouthIntake } from './youth'
 import { autoFillLineup } from './career'
 import { SQUAD_SIZE } from './fixtures'
+import { playBackgroundWindow, playForeignContinentals, seasonTick, worldRanking } from './world'
 
 // The master week loop. Each week: the development engine moves real ability,
-// scouting coverage refreshes (or fails to refresh) reads, and the world emits
-// news. On the season rollover (week 52 -> 1) everyone ages a year and a silent
-// youth intake enters the manager's pool. Competitive fixtures / tournaments
-// wire in here in a later milestone.
+// scouting coverage refreshes (or fails to refresh) reads, the REST of the
+// world plays its own football (moving the live ratings), and the world emits
+// news. On the season rollover (week 52 -> 1) everyone ages a year, a silent
+// youth intake enters the manager's pool, and nation ratings revert a touch
+// toward their cultural base.
+
+// Week 32 = the last finals round week: in a Continental year, that's when the
+// OTHER confederations' championships conclude too.
+const FOREIGN_CONTINENTALS_WEEK = 32
 
 export function advanceWeek(career: Career): Career {
   let week = career.week + 1
@@ -28,6 +35,33 @@ export function advanceWeek(career: Career): Career {
 
   const rng = new RNG(deriveSeed(career.seed, season, week))
   const news: NewsItem[] = []
+
+  // 0) The rest of the world plays. On window match weeks, nations outside the
+  // manager's group meet in their own qualifiers (lite-simmed, ratings move).
+  // In a Continental year the other confederations crown champions at week 32.
+  let world = career.world
+  if (windowAtWeek(week)) {
+    const busy = new Set(career.campaign.groupNationIds)
+    world = playBackgroundWindow(world, career.seed, season, week, busy)
+  }
+  if (year === 1 && week === FOREIGN_CONTINENTALS_WEEK) {
+    const conf = NATIONS_BY_ID[career.managerNationId].confederation
+    const foreign = playForeignContinentals(world, career.seed, season, conf)
+    world = foreign.world
+    if (foreign.champions.length > 0) {
+      const line = foreign.champions
+        .map((c) => `${ALL_NATIONS_BY_ID[c.championId].name} (${CONFEDERATION_NAMES[c.confederation as keyof typeof CONFEDERATION_NAMES] ?? c.confederation})`)
+        .join(', ')
+      news.push(
+        mkNews(`foreign-continentals-${season}`, year, week, 'CONTINENTAL', 0.6,
+          `Continental champions crowned around the world: ${line}.`),
+      )
+    }
+  }
+  if (rolledSeason) {
+    news.push(...rankingMovementNews(world, career, year))
+    world = seasonTick(world)
+  }
 
   // 1) Development moves REAL ability invisibly. Also age the memory of any
   // in-person read so a stale call-up eventually reverts to a range.
@@ -101,6 +135,7 @@ export function advanceWeek(career: Career): Career {
     year,
     season,
     players,
+    world,
     registeredSquad,
     lineup,
     bench,
@@ -112,6 +147,46 @@ export function advanceWeek(career: Career): Career {
     tournament: rolledSeason ? null : career.tournament,
     news: [...news, ...career.news].slice(0, 80),
   }
+}
+
+// At season's end, call out the year's biggest climber and faller among the
+// world's upper tier (and always note the manager's own movement if notable).
+function rankingMovementNews(world: WorldState, career: Career, year: number): NewsItem[] {
+  const ranked = worldRanking(world)
+  const notable = ranked.filter((r) => r.rank <= 25 && r.nation.isPlayable)
+  const out: NewsItem[] = []
+
+  const riser = [...notable].sort((a, b) => b.movement - a.movement)[0]
+  if (riser && riser.movement >= 3) {
+    out.push(
+      mkNews(`riser-${career.season}`, year, 1, 'RANKINGS', 0.5,
+        `${riser.nation.name} are the year's big climbers, up ${riser.movement} places to ${ordinal(riser.rank)} in the world.`),
+    )
+  }
+  const faller = [...notable].sort((a, b) => a.movement - b.movement)[0]
+  if (faller && faller.movement <= -3 && faller.nation.id !== riser?.nation.id) {
+    out.push(
+      mkNews(`faller-${career.season}`, year, 1, 'RANKINGS', 0.45,
+        `A year to forget for ${faller.nation.name}: down ${-faller.movement} places to ${ordinal(faller.rank)}.`),
+    )
+  }
+
+  const mine = ranked.find((r) => r.nation.id === career.managerNationId)
+  if (mine && Math.abs(mine.movement) >= 2 && mine.nation.id !== riser?.nation.id && mine.nation.id !== faller?.nation.id) {
+    out.push(
+      mkNews(`myrank-${career.season}`, year, 1, 'RANKINGS', 0.55,
+        mine.movement > 0
+          ? `${mine.nation.name} end the year ${ordinal(mine.rank)} in the world — up ${mine.movement} places. The project is working.`
+          : `${mine.nation.name} slip to ${ordinal(mine.rank)} in the world rankings. Questions are being asked.`),
+    )
+  }
+  return out
+}
+
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0])
 }
 
 // Hype is driven by a player's REAL hidden ability, but never reveals the

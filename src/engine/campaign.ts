@@ -4,25 +4,33 @@
 // here — Tier 2 (full engine) for playable nations, Tier 3 (lightweight Poisson)
 // for filler — so the table stays alive. Top N qualify.
 
-import type { Campaign, GroupFixture, GroupStanding, Nation, PlayedResult } from './types'
+import type { Campaign, GroupFixture, GroupStanding, Nation, PlayedResult, WorldState } from './types'
 import { ALL_NATIONS_BY_ID, nationsInConfederation } from '@/data/nations'
 import { RNG, deriveSeed, hashStr } from './rng'
 import { simulateMatch } from './match'
 import { simulateLite } from './matchLite'
 import { buildOpponentTeam } from './matchSetup'
+import { ratingOf } from './world'
 
 export const GROUP_SIZE = 6
 export const QUALIFY_COUNT = 2
 
 // Build a qualifying group around the manager's nation: the manager plus the
 // strongest others from their confederation, then schedule a double round-robin.
-export function createCampaign(managerNationId: string, seed: number, cycle: number): Campaign {
+// Strength is read from the live world ratings, so who you're drawn against
+// shifts as nations rise and fall across cycles.
+export function createCampaign(
+  managerNationId: string,
+  seed: number,
+  cycle: number,
+  world?: WorldState,
+): Campaign {
   const rng = new RNG(deriveSeed(seed, cycle, 0xca))
   const me = ALL_NATIONS_BY_ID[managerNationId]
   const pool = nationsInConfederation(me.confederation).filter((n) => n.id !== me.id)
 
   // Pick a believable mix: bias toward stronger sides but keep some variety.
-  const ranked = [...pool].sort((a, b) => b.nationRating - a.nationRating)
+  const ranked = [...pool].sort((a, b) => ratingOf(world, b.id) - ratingOf(world, a.id))
   const strong = ranked.slice(0, Math.min(ranked.length, GROUP_SIZE * 2))
   const chosen: Nation[] = []
   const shuffled = shuffle(strong, rng)
@@ -75,6 +83,8 @@ export function resolveMatchday(
   managerResult: PlayedResult,
   managerNationId: string,
   seed: number,
+  season = 1,
+  world?: WorldState,
 ): Campaign {
   const md = campaign.matchdays[campaign.matchdayIndex]
   const standings = campaign.standings.map((s) => ({ ...s }))
@@ -86,7 +96,7 @@ export function resolveMatchday(
     if (isManager) {
       res = managerResult
     } else {
-      res = simFixture(fx, seed, campaign.cycle, campaign.matchdayIndex)
+      res = simFixture(fx, seed, campaign.cycle, campaign.matchdayIndex, season, world)
     }
     applyResult(standings, res)
     results.push(res)
@@ -108,20 +118,27 @@ export function resolveMatchday(
 }
 
 // ---- simulation of a non-manager fixture (Tier 2 / Tier 3) ----
-function simFixture(fx: GroupFixture, seed: number, cycle: number, mdIndex: number): PlayedResult {
+function simFixture(
+  fx: GroupFixture,
+  seed: number,
+  cycle: number,
+  mdIndex: number,
+  season: number,
+  world?: WorldState,
+): PlayedResult {
   const home = ALL_NATIONS_BY_ID[fx.homeId]
   const away = ALL_NATIONS_BY_ID[fx.awayId]
   const s = deriveSeed(seed, cycle, mdIndex, hashStr(fx.homeId + fx.awayId))
 
   if (home.isPlayable && away.isPlayable) {
-    // Tier 2: full engine with AI-picked sides.
-    const homeTeam = buildOpponentTeam(home, seed, true)
-    const awayTeam = buildOpponentTeam(away, seed, false)
+    // Tier 2: full engine with AI-picked sides (current-season squads).
+    const homeTeam = buildOpponentTeam(home, seed, true, season, ratingOf(world, home.id))
+    const awayTeam = buildOpponentTeam(away, seed, false, season, ratingOf(world, away.id))
     const r = simulateMatch(homeTeam, awayTeam, s)
     return { homeId: fx.homeId, awayId: fx.awayId, hg: r.homeGoals, ag: r.awayGoals }
   }
-  // Tier 3: lightweight Poisson from nation ratings.
-  const lite = simulateLite(home.nationRating, away.nationRating, true, s)
+  // Tier 3: lightweight Poisson from live world ratings.
+  const lite = simulateLite(ratingOf(world, home.id), ratingOf(world, away.id), true, s)
   return { homeId: fx.homeId, awayId: fx.awayId, hg: lite.goalsA, ag: lite.goalsB }
 }
 

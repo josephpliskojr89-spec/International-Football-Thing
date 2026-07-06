@@ -4,12 +4,13 @@
 // nations, Tier 3 Poisson for filler). A draw is settled on penalties so every
 // round produces a winner.
 
-import type { Nation, Tie, Tournament, TournamentKind } from './types'
+import type { Nation, Tie, Tournament, TournamentKind, WorldState } from './types'
 import { ALL_NATIONS, ALL_NATIONS_BY_ID, CONFEDERATION_NAMES } from '@/data/nations'
 import { RNG, deriveSeed, hashStr } from './rng'
 import { simulateMatch } from './match'
 import { simulateLite } from './matchLite'
 import { buildOpponentTeam } from './matchSetup'
+import { ratingOf } from './world'
 
 export const CONTINENTAL_SIZE = 8
 export const WORLD_CUP_SIZE = 16
@@ -23,13 +24,16 @@ export interface TieResult {
 
 // Build a tournament around the manager. Continental = top of the manager's
 // confederation; World Cup = the strongest sides worldwide. The manager is
-// force-included when `includeManager` (e.g. they qualified).
+// force-included when `includeManager` (e.g. they qualified). Fields and
+// seedings read the LIVE world ratings — a nation that's risen this cycle
+// earns its seat at the table, and no two World Cups need look alike.
 export function createTournament(
   kind: TournamentKind,
   managerId: string,
   _seed: number,
   _season: number,
   includeManager: boolean,
+  world?: WorldState,
 ): Tournament {
   const me = ALL_NATIONS_BY_ID[managerId]
   let pool: Nation[]
@@ -46,8 +50,9 @@ export function createTournament(
     name = 'World Cup'
   }
 
-  // Seed by strength; force the manager in (continental always; WC if qualified).
-  const ranked = [...pool].sort((a, b) => b.nationRating - a.nationRating)
+  // Seed by live strength; force the manager in (continental always; WC if qualified).
+  const strength = (n: Nation) => ratingOf(world, n.id)
+  const ranked = [...pool].sort((a, b) => strength(b) - strength(a))
   let field = ranked.slice(0, size)
   const inField = kind === 'CONTINENTAL' || includeManager
   if (inField && !field.some((n) => n.id === managerId)) {
@@ -57,7 +62,7 @@ export function createTournament(
     // Manager watches: ensure they're NOT in the field.
     field = field.filter((n) => n.id !== managerId).slice(0, size)
   }
-  field.sort((a, b) => b.nationRating - a.nationRating)
+  field.sort((a, b) => strength(b) - strength(a))
 
   const fieldIds = field.map((n) => n.id)
   const round0 = seedBracket(fieldIds)
@@ -106,6 +111,8 @@ export function resolveTournamentRound(
   t: Tournament,
   managerResult: TieResult | null,
   seed: number,
+  season = 1,
+  world?: WorldState,
 ): Tournament {
   const round = t.rounds[t.roundIndex].map((tie) => ({ ...tie }))
   const mt = managerTie(t)
@@ -115,7 +122,7 @@ export function resolveTournamentRound(
     if (mt && i === mt.index && managerResult) {
       res = managerResult
     } else {
-      res = simTie(tie, seed, t.roundIndex, i)
+      res = simTie(tie, seed, t.roundIndex, i, season, world)
     }
     tie.aGoals = res.aGoals
     tie.bGoals = res.bGoals
@@ -147,24 +154,26 @@ export function resolveTournamentRound(
 }
 
 // Simulate a non-manager tie to a decisive result.
-function simTie(tie: Tie, seed: number, roundIndex: number, i: number): TieResult {
+function simTie(tie: Tie, seed: number, roundIndex: number, i: number, season: number, world?: WorldState): TieResult {
   const a = ALL_NATIONS_BY_ID[tie.aId]
   const b = ALL_NATIONS_BY_ID[tie.bId]
+  const ra = ratingOf(world, tie.aId)
+  const rb = ratingOf(world, tie.bId)
   const s = deriveSeed(seed, roundIndex, hashStr(tie.aId + tie.bId), i)
   let ag: number
   let bg: number
   if (a.isPlayable && b.isPlayable) {
-    const home = buildOpponentTeam(a, seed, true)
-    const away = buildOpponentTeam(b, seed, false)
+    const home = buildOpponentTeam(a, seed, true, season, ra)
+    const away = buildOpponentTeam(b, seed, false, season, rb)
     const r = simulateMatch(home, away, s)
     ag = r.homeGoals
     bg = r.awayGoals
   } else {
-    const lite = simulateLite(a.nationRating, b.nationRating, true, s)
+    const lite = simulateLite(ra, rb, true, s)
     ag = lite.goalsA
     bg = lite.goalsB
   }
-  return decide(tie.aId, tie.bId, ag, bg, a.nationRating, b.nationRating, deriveSeed(s, 99))
+  return decide(tie.aId, tie.bId, ag, bg, ra, rb, deriveSeed(s, 99))
 }
 
 // Ensure a winner: a draw goes to penalties, weighted slightly by strength.

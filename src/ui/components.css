@@ -530,6 +530,10 @@
   background: var(--card-2);
   font-weight: 800;
 }
+/* World-rankings variant: # · nation · confed · rating · season movement */
+.standrow--rank {
+  grid-template-columns: 34px 1fr 40px 36px 46px;
+}
 .stand__pos { display: flex; align-items: center; gap: 5px; color: var(--text-dim); }
 .stand__team { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stand__num { text-align: center; }

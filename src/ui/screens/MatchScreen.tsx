@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useGame } from '@/state/store'
 import { ALL_NATIONS_BY_ID } from '@/data/nations'
 import { currentMatch } from '@/engine/fixtures'
+import { ratingOf, worldRankOf } from '@/engine/world'
 import { STYLE_LABELS } from '@/data/tactics'
 import type { MatchResult } from '@/engine/match'
 
@@ -75,7 +76,8 @@ export function MatchScreen() {
             {isHome ? me.name : opp.name} v {isHome ? opp.name : me.name}
           </div>
           <div className="muted" style={{ fontSize: 13 }}>
-            {compLabel} · {opp.name} ({opp.nationRating}) play {opp.tacticalIdentity}
+            {compLabel} · {opp.name} ({ordinalRank(worldRankOf(career.world, opp.id))} in the world,{' '}
+            {Math.round(ratingOf(career.world, opp.id))}) play {opp.tacticalIdentity}
           </div>
           {isTournament && (
             <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>
@@ -238,6 +240,13 @@ function StatBar({
       </div>
     </div>
   )
+}
+
+function ordinalRank(n: number): string {
+  if (n <= 0) return 'unranked'
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return n + (s[(v - 20) % 10] ?? s[v] ?? s[0])
 }
 
 function ratingColor(r: number): string {

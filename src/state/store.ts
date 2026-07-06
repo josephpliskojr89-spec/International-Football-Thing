@@ -17,6 +17,7 @@ import {
   type TieResult,
 } from '@/engine/tournament'
 import { deriveSeed, hashStr } from '@/engine/rng'
+import { ratingOf, applyResults } from '@/engine/world'
 import { ALL_NATIONS_BY_ID } from '@/data/nations'
 import {
   windowAtWeek,
@@ -45,6 +46,7 @@ export type Route =
   | 'squad-select'
   | 'standings'
   | 'bracket'
+  | 'rankings'
 
 interface GameState {
   route: Route
@@ -280,7 +282,7 @@ function resolveQualifier(career: Career): { next: Career; result: MatchResult }
   const opponent = ALL_NATIONS_BY_ID[mf.opponentId]
   const isHome = mf.home
   const managerTeam = buildManagerTeam(career, isHome)
-  const opponentTeam = buildOpponentTeam(opponent, career.seed, !isHome)
+  const opponentTeam = buildOpponentTeam(opponent, career.seed, !isHome, career.season, ratingOf(career.world, opponent.id))
   const home = isHome ? managerTeam : opponentTeam
   const away = isHome ? opponentTeam : managerTeam
   const seed = deriveSeed(career.seed, career.campaign.cycle, career.campaign.matchdayIndex, hashStr(opponent.id))
@@ -295,13 +297,15 @@ function resolveQualifier(career: Career): { next: Career; result: MatchResult }
     hg: result.homeGoals,
     ag: result.awayGoals,
   }
-  let campaign = resolveMatchday(career.campaign, managerResult, myId, career.seed)
+  let campaign = resolveMatchday(career.campaign, managerResult, myId, career.seed, career.season, career.world)
+  // Every result of the matchday — the manager's included — moves the world.
+  let world = applyResults(career.world, campaign.recentResults, 'qualifier')
   const extraNews: NewsItem[] = []
   let qualifiedForWorldCup = career.qualifiedForWorldCup
   if (campaign.complete) {
     qualifiedForWorldCup = campaign.qualifiedIds.includes(myId)
     extraNews.push(qualificationNews(campaign, myId, career.year, career.week))
-    campaign = createCampaign(myId, career.seed, campaign.cycle + 1)
+    campaign = createCampaign(myId, career.seed, campaign.cycle + 1, world)
   }
 
   const headline = matchHeadline(result, isHome, career.year, career.week)
@@ -309,6 +313,7 @@ function resolveQualifier(career: Career): { next: Career; result: MatchResult }
     ...career,
     players,
     campaign,
+    world,
     qualifiedForWorldCup,
     playedFixtures: [...career.playedFixtures, key],
     coaches: career.coaches.map((c) => ({ ...c, targetedLookUsed: false })),
@@ -324,10 +329,9 @@ function resolveTournament(career: Career): { next: Career; result: MatchResult 
   if (!mt) return null
 
   const opponent = ALL_NATIONS_BY_ID[mt.opponentId]
-  const me = ALL_NATIONS_BY_ID[career.managerNationId]
   const isHome = mt.home
   const managerTeam = buildManagerTeam(career, isHome)
-  const opponentTeam = buildOpponentTeam(opponent, career.seed, !isHome)
+  const opponentTeam = buildOpponentTeam(opponent, career.seed, !isHome, career.season, ratingOf(career.world, opponent.id))
   const home = isHome ? managerTeam : opponentTeam
   const away = isHome ? opponentTeam : managerTeam
   const seed = deriveSeed(career.seed, t.roundIndex, hashStr(opponent.id), 0xfeed)
@@ -337,13 +341,15 @@ function resolveTournament(career: Career): { next: Career; result: MatchResult 
 
   // Build the tie result in the tie's a/b orientation (aGoals = home goals here,
   // because the team built as "home" is always the tie's a-side).
+  const myRating = ratingOf(career.world, career.managerNationId)
+  const oppRating = ratingOf(career.world, opponent.id)
   const tieResult: TieResult = decide(
     mt.tie.aId,
     mt.tie.bId,
     result.homeGoals,
     result.awayGoals,
-    isHome ? me.nationRating : opponent.nationRating,
-    isHome ? opponent.nationRating : me.nationRating,
+    isHome ? myRating : oppRating,
+    isHome ? oppRating : myRating,
     deriveSeed(seed, 7),
   )
 
@@ -355,9 +361,24 @@ function resolveTournament(career: Career): { next: Career; result: MatchResult 
 
 // Resolve the current finals round (manager result applied if given, rest
 // simmed), then surface champion / elimination news and bank any trophy.
+// Finals ties hit the world ratings hardest — this is where eras shift.
 function stepTournament(career: Career, managerResult: TieResult | null): Career {
   const t = career.tournament!
-  const newT = resolveTournamentRound(t, managerResult, career.seed)
+  const newT = resolveTournamentRound(t, managerResult, career.seed, career.season, career.world)
+  const playedRound = newT.rounds[t.roundIndex] ?? []
+  const world = applyResults(
+    career.world,
+    playedRound.map((tie) => ({
+      homeId: tie.aId,
+      awayId: tie.bId,
+      hg: tie.aGoals ?? 0,
+      ag: tie.bGoals ?? 0,
+      neutral: true,
+      shootout: tie.pens,
+      shootoutWinnerId: tie.pens ? tie.winnerId ?? undefined : undefined,
+    })),
+    'finals',
+  )
   const news: NewsItem[] = []
   let trophies = career.trophies
 
@@ -386,7 +407,7 @@ function stepTournament(career: Career, managerResult: TieResult | null): Career
     })
   }
 
-  return { ...career, tournament: newT, trophies, news: [...news, ...career.news].slice(0, 80) }
+  return { ...career, tournament: newT, world, trophies, news: [...news, ...career.news].slice(0, 80) }
 }
 
 // Calendar-driven tournament lifecycle: create the summer finals at its deadline,
@@ -396,7 +417,7 @@ function progressTournament(career: Career): Career {
   const slot = tournamentForYear(c.year)
   if (slot && c.week === TOURNAMENT_DEADLINE_WEEK && !c.tournament) {
     const include = slot === 'WORLD_CUP' ? worldCupInclusion(c) : true
-    const t = createTournament(slot, c.managerNationId, c.seed, c.season, include)
+    const t = createTournament(slot, c.managerNationId, c.seed, c.season, include, c.world)
     c = { ...c, tournament: t, news: [tournamentDrawNews(t, c), ...c.news].slice(0, 80) }
   }
 

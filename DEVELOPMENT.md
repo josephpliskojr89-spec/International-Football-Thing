@@ -122,14 +122,37 @@ window + deadline machinery stays).
 - Bracket screen + knockout match framing + finals-aware feed (draw / result /
   elimination / champion beats) + a Finals menu entry while one is live.
 
+### Milestone 6 — the living world (done)
+- Dynamic nation ratings (`engine/world.ts`): Elo-style, moved by EVERY
+  competitive result — the manager's matches, simmed group fixtures, finals
+  ties (neutral, shootout-aware, margin-amplified), plus background windows the
+  rest of the world plays each window week and the other confederations' own
+  continental championships. Zero-sum, clamped, with a soft seasonal reversion
+  toward each nation's cultural base so identities persist while eras happen.
+- Generational world squads (`playerGen.generateSquadForNation`): every AI
+  nation's squad is a set of persistent virtual careers derived from
+  (seed, nation, slot, generation) — stable names, ages that advance each
+  season, an age curve (rise → peak 26-29 → decline), staggered individual
+  retirements, occasional generational stars. Zero save cost; overlapping high
+  peaks ARE a golden generation.
+- Everything reads the live ratings: qualifying group draws, tournament fields
+  and seedings, lite-sim strength, the penalty decider, opponent squad quality
+  and the match screen's opponent line ("8th in the world").
+- World Rankings screen (menu): live table with season movement arrows and the
+  World Cup seeding cutline. Season-end news beats for big risers/fallers and
+  the manager's own movement; a news item when foreign continents crown champions.
+
 ### Not yet built (next milestones)
-1. World rankings / proper seeding (finals currently seed by raw nation rating,
-   not an earned ranking).
-2. Confederation-specific qualifying formats (league/hex/group variants) and
-   inter-confederation playoffs.
-3. Eligibility/persuasion (courting a dual national, rival-AI clock). The data
+1. Confederation-specific qualifying formats (league/hex/group variants) and
+   inter-confederation playoffs; align the 2-year qualifying campaign to the
+   4-year cycle (currently every other campaign's result is never consumed).
+2. Eligibility/persuasion (courting a dual national, rival-AI clock). The data
    model (leans, eligibleNations, eligibilityState, tiedNation) and the Dual
-   Nationals screen exist; the interactive courting loop does not.
+   Nationals screen exist; the interactive courting loop does not. Needs
+   friendlies back as a courting tool.
+3. Trophy cabinet / honours UI (`career.trophies` is banked but never shown);
+   injuries with consequences (match injuries are currently flavor only);
+   squad-lock fix when not at the finals; neutral-venue manager finals ties.
 4. Template-driven News engine (events → priority → feed mix). Current feed is
    hand-written template banks, not the bible's event-priority system.
 5. Offline service worker re-enabled (network-first) before release — currently

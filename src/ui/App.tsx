@@ -13,6 +13,7 @@ import { ScoutingScreen } from './screens/ScoutingScreen'
 import { SquadSelectionScreen } from './screens/SquadSelectionScreen'
 import { StandingsScreen } from './screens/StandingsScreen'
 import { BracketScreen } from './screens/BracketScreen'
+import { RankingsScreen } from './screens/RankingsScreen'
 
 export function App() {
   const route = useGame((s) => s.route)
@@ -57,6 +58,8 @@ export function App() {
       return <StandingsScreen />
     case 'bracket':
       return <BracketScreen />
+    case 'rankings':
+      return <RankingsScreen />
     default:
       return <TitleScreen />
   }

@@ -207,8 +207,90 @@ function positionCounts(size: number): Record<Position, number> {
 export function generateManagerPool(nation: Nation, seed: number): Player[] {
   return generatePool(nation, seed, poolSize(nation))
 }
-export function generateSquadForNation(nation: Nation, seed: number): Player[] {
-  return generatePool(nation, seed, 18)
+
+// ---- Generational world squads ----
+// Every other nation's squad is a set of persistent VIRTUAL careers, not a
+// frozen snapshot: each squad slot hosts a player whose identity (name, debut
+// age, peak quality) is fixed for his whole career span, whose age advances
+// with the season, whose ability follows an age curve (rise -> peak -> decline),
+// and who is individually replaced by the next generation when his span ends.
+// Spans are staggered per slot, so turnover is gradual — you watch a rival's
+// star age across cycles while their next kid breaks through. All of it is
+// derived deterministically from (careerSeed, nation, slot, generation): zero
+// save-file cost, and several high peaks overlapping IS a golden generation.
+
+// Same 18-man composition the old snapshot squads had (keeps match balance).
+const WORLD_SQUAD_LINES: { pos: Position; count: number }[] = [
+  { pos: 'GK', count: 3 },
+  { pos: 'DF', count: 6 },
+  { pos: 'MF', count: 6 },
+  { pos: 'FW', count: 3 },
+]
+// Career span in seasons. Debut age is derived FROM the span so everyone
+// retires around 34-36: long spans are prodigies who debut at 16-18, short
+// spans are late bloomers arriving in their early 20s.
+const SPAN_MIN = 13
+const SPAN_MAX = 19
+const WORLD_STAR_CHANCE = 0.08 // per slot-generation: a genuine star is born
+// The age curve deflates most of a squad below peak; nudge the anchor up so a
+// nation's fielded XI still averages out near its rating.
+const WORLD_CURVE_COMP = 3
+
+// Ability multiplier across a virtual career: raw teenager -> peak 26-29 ->
+// decline (slower for GK/DF, matching the development engine's shape).
+function worldAgeCurve(age: number, pos: Position): number {
+  if (age <= 26) return 0.86 + (Math.max(age, 17) - 17) * (0.14 / 9)
+  if (age <= 29) return 1
+  const rate = pos === 'GK' || pos === 'DF' ? 0.008 : 0.015
+  return 1 - rate * (age - 29)
+}
+
+export function generateSquadForNation(
+  nation: Nation,
+  seed: number,
+  season = 1,
+  anchorRating = nation.nationRating,
+): Player[] {
+  const players: Player[] = []
+  let slotIndex = 0
+
+  for (const line of WORLD_SQUAD_LINES) {
+    for (let r = 0; r < line.count; r++) {
+      const i = slotIndex++
+      const slotSeed = deriveSeed(seed, hashStr(nation.id), i, 0x5107)
+      const span = SPAN_MIN + (slotSeed % (SPAN_MAX - SPAN_MIN + 1))
+      const phase = deriveSeed(slotSeed, 0x0f) % span
+      const gen = Math.floor((season + phase) / span)
+      const seasonsIn = (season + phase) % span
+
+      // One RNG per (nation, slot, generation): the identity rolls (name, debut
+      // age) land on the same sequence positions every season, so the player
+      // stays HIMSELF for his whole career while his numbers evolve.
+      const rng = new RNG(deriveSeed(seed, hashStr(nation.id), i, gen, 0x9e))
+      const debutAge = 35 - span + rng.int(0, 2) // span 19 -> 16..18, span 13 -> 22..24
+      const age = debutAge + seasonsIn // debut .. ~34-36
+
+      // Stars come from a separate stream so they never disturb identity rolls.
+      const starRng = new RNG(deriveSeed(slotSeed, gen, 0x57a7))
+      const star = starRng.bool(WORLD_STAR_CHANCE) ? starRng.range(4, 10) : 0
+
+      const top = anchorRating + (line.pos === 'GK' ? -1 : 3) + WORLD_CURVE_COMP
+      const rank = line.count <= 1 ? 0 : r / (line.count - 1)
+      const peak = clamp(Math.round(top - Math.pow(rank, 1.1) * 30 + rng.range(-4, 4) + star), 40, 97)
+      const current = clamp(Math.round(peak * worldAgeCurve(age, line.pos)), 38, 97)
+
+      const p = generatePlayer({
+        nation,
+        position: line.pos,
+        age,
+        seniorTargetOverall: current,
+        rng,
+        index: i,
+      })
+      players.push({ ...p, id: `${nation.id}-w${i}-g${gen}`, potential: Math.max(p.potential, peak) })
+    }
+  }
+  return players
 }
 
 // Build a ratings block that evaluates (via overallFor) to roughly `target`,

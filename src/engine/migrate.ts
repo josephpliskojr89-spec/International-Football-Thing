@@ -8,6 +8,7 @@ import { SAVE_VERSION } from '@/data/constants'
 import { overallFor } from './playerGen'
 import { autoFillLineup, autoFillBench, styleForApproach } from './career'
 import { createCampaign } from './campaign'
+import { initWorld } from './world'
 import { FORMATIONS_BY_ID, DEFAULT_FORMATION } from '@/data/formations'
 
 export function migrateCareer(raw: unknown): Career {
@@ -70,6 +71,12 @@ export function migrateCareer(raw: unknown): Career {
       c.campaign && Array.isArray(c.campaign.matchdays)
         ? c.campaign
         : createCampaign(c.managerNationId ?? 'ENG', c.seed ?? 1, 1),
+    // Older saves have no world state: start it fresh from the static ratings
+    // (their world simply begins remembering from now on).
+    world:
+      c.world && typeof c.world.ratings === 'object'
+        ? { ratings: c.world.ratings, seasonStartRanks: c.world.seasonStartRanks ?? {} }
+        : initWorld(),
     qualifiedForWorldCup: !!c.qualifiedForWorldCup,
     tournament: c.tournament ?? null,
     trophies: Array.isArray(c.trophies) ? c.trophies : [],

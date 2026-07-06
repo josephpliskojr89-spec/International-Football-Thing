@@ -14,13 +14,13 @@ export interface LiteResult {
 export function simulateLite(
   nationRatingA: number,
   nationRatingB: number,
-  homeIsA: boolean,
+  homeIsA: boolean | null, // null = neutral venue (finals ties)
   seed: number,
 ): LiteResult {
   const rng = new RNG(seed >>> 0)
 
-  const strengthA = nationRatingA * (homeIsA ? MATCH.homeBonus : 1) * rng.range(0.95, 1.08)
-  const strengthB = nationRatingB * (!homeIsA ? MATCH.homeBonus : 1) * rng.range(0.95, 1.08)
+  const strengthA = nationRatingA * (homeIsA === true ? MATCH.homeBonus : 1) * rng.range(0.95, 1.08)
+  const strengthB = nationRatingB * (homeIsA === false ? MATCH.homeBonus : 1) * rng.range(0.95, 1.08)
 
   // Scale the strength delta into xG around the same ~1.3 balanced baseline.
   const xgA = Math.max(MATCH.xgFloor, MATCH.baseChances * (strengthA / strengthB))

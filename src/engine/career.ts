@@ -5,6 +5,7 @@ import { FORMATIONS_BY_ID } from '@/data/formations'
 import type { PlayStyle } from './types'
 import { generateManagerPool } from './playerGen'
 import { createCampaign } from './campaign'
+import { initWorld } from './world'
 import { RNG, deriveSeed } from './rng'
 import { generateName } from './nameGen'
 
@@ -51,6 +52,7 @@ export function createCareer(input: NewCareerInput): Career {
     formation,
     playedFixtures: [],
     campaign: createCampaign(input.nationId, seed, 1),
+    world: initWorld(),
     qualifiedForWorldCup: false,
     tournament: null,
     trophies: [],

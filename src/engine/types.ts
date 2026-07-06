@@ -129,6 +129,16 @@ export interface Campaign {
   qualifiedIds: string[] // set when complete
 }
 
+// ---- The living world ----
+// Dynamic per-nation strength, moved by every competitive result everywhere
+// (Elo-style). This is what makes the world remember: seedings, qualifying
+// groups, tournament fields and sim strength all read these, never the static
+// data ratings directly.
+export interface WorldState {
+  ratings: Record<string, number> // nationId -> current dynamic rating (float)
+  seasonStartRanks: Record<string, number> // nationId -> world rank at season start (movement arrows)
+}
+
 // ---- Finals tournaments (Continental Championship / World Cup) ----
 export type TournamentKind = 'CONTINENTAL' | 'WORLD_CUP'
 
@@ -193,6 +203,7 @@ export interface Career {
   formation: string
   playedFixtures: string[] // fixtureKey()s already played, to avoid replays
   campaign: Campaign // the World Cup qualifying campaign
+  world: WorldState // dynamic nation ratings + rankings (the world's memory)
   qualifiedForWorldCup: boolean // result of the most recent qualifying campaign
   tournament: Tournament | null // the active summer finals tournament, if any
   trophies: Trophy[] // honours won
