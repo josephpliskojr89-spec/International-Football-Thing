@@ -3,6 +3,7 @@ import { useGame } from '@/state/store'
 import { ALL_NATIONS_BY_ID } from '@/data/nations'
 import { currentMatch } from '@/engine/fixtures'
 import { ratingOf, worldRankOf } from '@/engine/world'
+import { nationalManagerName } from '@/engine/manager'
 import { STYLE_LABELS } from '@/data/tactics'
 import type { MatchResult } from '@/engine/match'
 
@@ -83,9 +84,10 @@ export function MatchScreen() {
           </div>
           {isTournament && (
             <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>
-              Knockout — a draw goes to a penalty shootout.
+              {match.round.startsWith('Group') ? 'Group stage — a draw is a real result.' : 'Knockout — a draw goes to a penalty shootout.'}
             </div>
           )}
+          <DugoutLine career={career} oppId={opp.id} />
         </div>
 
         <div className="card">
@@ -109,6 +111,25 @@ export function MatchScreen() {
           Kick Off ›
         </button>
       </div>
+    </div>
+  )
+}
+
+// The rival dugout + your duel history vs this nation. Same face for years,
+// then one day a new name — and the record carries on regardless.
+function DugoutLine({ career, oppId }: { career: import('@/engine/types').Career; oppId: string }) {
+  const boss = nationalManagerName(oppId, career.season, career.seed)
+  const h = career.h2h[oppId]
+  const duel = h
+    ? h.w > h.l
+      ? ` You lead this duel ${h.w}–${h.l}${h.d ? ` (${h.d} drawn)` : ''}.`
+      : h.l > h.w
+        ? ` They lead this duel ${h.l}–${h.w}${h.d ? ` (${h.d} drawn)` : ''} — a score to settle.`
+        : ` The duel is level at ${h.w}–${h.l}.`
+    : ' First meeting on your watch.'
+  return (
+    <div className="faint" style={{ fontSize: 12, marginTop: 6 }}>
+      In their dugout: {boss}.{duel}
     </div>
   )
 }

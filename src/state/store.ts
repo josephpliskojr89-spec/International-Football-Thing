@@ -5,7 +5,7 @@ import { advanceWeek as advanceWeekEngine } from '@/engine/calendar'
 import { simulateMatch, type MatchResult } from '@/engine/match'
 import { buildManagerTeam, buildOpponentTeam } from '@/engine/matchSetup'
 import { seeInPerson, targetedLook } from '@/engine/scouting'
-import { isSquadLocked, currentMatch, friendlyFixture } from '@/engine/fixtures'
+import { isSquadLocked, currentMatch, friendlyFixture, playoffFixture } from '@/engine/fixtures'
 import { managerFixture, resolveMatchday } from '@/engine/campaign'
 import { playerOfTheTournament } from '@/engine/awards'
 import { clampRep, nationName } from '@/engine/manager'
@@ -58,6 +58,7 @@ export type Route =
   | 'legacy'
   | 'offers'
   | 'final-whistle'
+  | 'ghost'
 
 interface GameState {
   route: Route
@@ -246,7 +247,9 @@ export const useGame = create<GameState>((set, get) => ({
         ? resolveTournament(career)
         : cm.type === 'FRIENDLY'
           ? resolveFriendly(career)
-          : resolveQualifier(career)
+          : cm.type === 'PLAYOFF'
+            ? resolvePlayoff(career)
+            : resolveQualifier(career)
     if (!resolved) return null
     set({ career: resolved.next })
     scheduleSave(resolved.next)
@@ -435,6 +438,19 @@ function mkStoreNews(id: string, career: Career, type: string, magnitude: number
   return { id, year: career.year, week: career.week, type, magnitude, text }
 }
 
+// Head-to-head vs a nation — the duel the match screen narrates.
+function updateH2h(h2h: Career['h2h'], oppId: string, mine: number, theirs: number): Career['h2h'] {
+  const cur = h2h[oppId] ?? { w: 0, d: 0, l: 0 }
+  return {
+    ...h2h,
+    [oppId]: {
+      w: cur.w + (mine > theirs ? 1 : 0),
+      d: cur.d + (mine === theirs ? 1 : 0),
+      l: cur.l + (mine < theirs ? 1 : 0),
+    },
+  }
+}
+
 // Aggregate manager record, from the manager's perspective.
 function updateRecord(record: Career['record'], mine: number, theirs: number): Career['record'] {
   return {
@@ -481,12 +497,18 @@ function resolveQualifier(career: Career): { next: Career; result: MatchResult }
   let qualifiedForWorldCup = career.qualifiedForWorldCup
   let reputation = career.reputation
   let lastCampaignPosition = career.lastCampaignPosition
+  let playoffPending = career.playoffPending
   if (campaign.complete) {
     // The campaign concludes at the end of cycle year 3 — the verdict stands
     // until the World Cup next summer. (A fresh campaign starts in year 2.)
     qualifiedForWorldCup = campaign.qualifiedIds.includes(myId)
     reputation = clampRep(career.reputation + (qualifiedForWorldCup ? 6 : -10))
     lastCampaignPosition = campaign.standings.findIndex((st) => st.nationId === myId) + 1
+    if (!qualifiedForWorldCup && lastCampaignPosition === 3) {
+      playoffPending = true
+      extraNews.push(mkStoreNews(`po-lifeline-${career.season}`, career, 'PLAYOFF', 0.95,
+        `Third place — but not dead. One lifeline remains: the Intercontinental Playoff next spring. One match. Winner goes to the World Cup.`))
+    }
     extraNews.push(qualificationNews(campaign, myId, career.year, career.week))
     history.push({
       season: career.season,
@@ -511,6 +533,8 @@ function resolveQualifier(career: Career): { next: Career; result: MatchResult }
     record: updateRecord(career.record, mine, theirs),
     reputation,
     lastCampaignPosition,
+    playoffPending,
+    h2h: updateH2h(career.h2h, opponent.id, mine, theirs),
     qualifiedForWorldCup,
     playedFixtures: [...career.playedFixtures, key],
     coaches: career.coaches.map((c) => ({ ...c, targetedLookUsed: false })),
@@ -555,9 +579,82 @@ function resolveFriendly(career: Career): { next: Career; result: MatchResult } 
     players,
     world,
     record: updateRecord(career.record, mine, theirs),
+    h2h: updateH2h(career.h2h, opponent.id, mine, theirs),
     playedFixtures: [...career.playedFixtures, key],
     coaches: career.coaches.map((c) => ({ ...c, targetedLookUsed: false })),
     news: [headline, ...aftermathNews, ...career.news].slice(0, 60),
+  }
+  return { next, result }
+}
+
+// One match for a place at the World Cup. No second chances, no second leg —
+// a draw goes straight to penalties.
+function resolvePlayoff(career: Career): { next: Career; result: MatchResult } | null {
+  const window = windowAtWeek(career.week)
+  if (!window) return null
+  const key = fixtureKey(career.season, window.id)
+  if (career.playedFixtures.includes(key)) return null
+
+  const fx = playoffFixture(career)
+  const opponent = ALL_NATIONS_BY_ID[fx.opponentId]
+  const isHome = fx.home
+  const managerTeam = buildManagerTeam(career, isHome)
+  const opponentTeam = buildOpponentTeam(opponent, career.seed, !isHome, career.season, ratingOf(career.world, opponent.id))
+  const home = isHome ? managerTeam : opponentTeam
+  const away = isHome ? opponentTeam : managerTeam
+  const seed = deriveSeed(career.seed, career.season, hashStr(opponent.id), 0x910)
+  const result = simulateMatch(home, away, seed)
+
+  const { players, aftermathNews } = applySquadAfterMatch(career, result, isHome, true)
+
+  const mine = isHome ? result.homeGoals : result.awayGoals
+  const theirs = isHome ? result.awayGoals : result.homeGoals
+  // Level after ninety? Penalties decide who boards the plane.
+  const dec = mine === theirs
+    ? decide(career.managerNationId, opponent.id, mine, theirs,
+        ratingOf(career.world, career.managerNationId), ratingOf(career.world, opponent.id), deriveSeed(seed, 7))
+    : null
+  const through = dec ? dec.winnerId === career.managerNationId : mine > theirs
+
+  const myId = career.managerNationId
+  const world = applyResults(career.world, [{
+    homeId: isHome ? myId : opponent.id,
+    awayId: isHome ? opponent.id : myId,
+    hg: result.homeGoals,
+    ag: result.awayGoals,
+    shootout: !!dec,
+    shootoutWinnerId: dec?.winnerId,
+  }], 'qualifier')
+
+  const pensText = dec ? ` (${dec.winnerId === myId ? `${Math.max(dec.pensA!, dec.pensB!)}–${Math.min(dec.pensA!, dec.pensB!)}` : `${Math.min(dec.pensA!, dec.pensB!)}–${Math.max(dec.pensA!, dec.pensB!)}`} on penalties)` : ''
+  const verdictNews = mkStoreNews(`po-verdict-${career.season}`, career, through ? 'QUALIFIED' : 'ELIMINATED', 1,
+    through
+      ? `THE LIFELINE HOLDS! ${ALL_NATIONS_BY_ID[myId].name} win the Intercontinental Playoff${pensText} and are going to the World Cup after all.`
+      : `Agony. ${ALL_NATIONS_BY_ID[myId].name} lose the Intercontinental Playoff${pensText}. There will be no World Cup. Not this time.`)
+  const history = [...career.history, {
+    season: career.season,
+    type: (through ? 'QUALIFIED' : 'MISSED') as Career['history'][number]['type'],
+    text: through
+      ? `${ALL_NATIONS_BY_ID[myId].name} qualify for the World Cup via the Intercontinental Playoff`
+      : `${ALL_NATIONS_BY_ID[myId].name} lose the Intercontinental Playoff — World Cup missed`,
+    nationId: myId,
+    managerMoment: true,
+  }]
+
+  const headline = matchHeadline(result, isHome, career.year, career.week, 'the Intercontinental Playoff')
+  const next: Career = {
+    ...career,
+    players,
+    world,
+    history,
+    qualifiedForWorldCup: through,
+    playoffPending: false,
+    reputation: clampRep(career.reputation + (through ? 7 : -7)),
+    record: updateRecord(career.record, mine, theirs),
+    h2h: updateH2h(career.h2h, opponent.id, mine, theirs),
+    playedFixtures: [...career.playedFixtures, key],
+    coaches: career.coaches.map((c) => ({ ...c, targetedLookUsed: false })),
+    news: [verdictNews, headline, ...aftermathNews, ...career.news].slice(0, 80),
   }
   return { next, result }
 }
@@ -601,7 +698,7 @@ function resolveTournament(career: Career): { next: Career; result: MatchResult 
   const mine = isHome ? result.homeGoals : result.awayGoals
   const theirs = isHome ? result.awayGoals : result.homeGoals
   const next = stepTournament(
-    { ...career, players, record: updateRecord(career.record, mine, theirs) },
+    { ...career, players, record: updateRecord(career.record, mine, theirs), h2h: updateH2h(career.h2h, opponent.id, mine, theirs) },
     tieResult,
   )
   // The manager's own match also gets a headline.
@@ -797,13 +894,20 @@ function matchHeadline(
   const myName = managerIsHome ? result.homeName : result.awayName
   const oppName = managerIsHome ? result.awayName : result.homeName
   const motm = result.motm ? ` ${result.motm.name} took the plaudits.` : ''
+  // Late drama deserves its own sentence in the record.
+  let drama = ''
+  if (Math.abs(mine - theirs) === 1) {
+    const decisiveSide = mine > theirs ? (managerIsHome ? result.scorersHome : result.scorersAway) : (managerIsHome ? result.scorersAway : result.scorersHome)
+    const last = decisiveSide.reduce((m, sc) => Math.max(m, sc.minute), 0)
+    if (last >= 88) drama = mine > theirs ? ` Won at the death — ${last}'.` : ` Heartbreak in the ${last}th minute.`
+  }
   return {
     id: `match-${myName}-${oppName}-${result.homeGoals}${result.awayGoals}-${year}${week}`,
     week,
     year,
     type: context === 'qualifying' ? 'QUALIFIER' : 'TOURNAMENT',
     magnitude: 0.6,
-    text: `${myName} ${verb} ${oppName} ${result.homeGoals}–${result.awayGoals} in ${context}.${motm}`,
+    text: `${myName} ${verb} ${oppName} ${result.homeGoals}–${result.awayGoals} in ${context}.${drama}${motm}`,
   }
 }
 

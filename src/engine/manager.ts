@@ -7,6 +7,7 @@ import type { Career, WorldState } from './types'
 import { ALL_NATIONS, ALL_NATIONS_BY_ID } from '@/data/nations'
 import { ratingOf, worldRankOf } from './world'
 import { RNG, deriveSeed } from './rng'
+import { generateName as genName } from './nameGen'
 
 export const SACK_THRESHOLD = 28
 
@@ -77,4 +78,26 @@ export function poachOffer(career: Career, seed: number): string | null {
 
 export function nationName(id: string): string {
   return ALL_NATIONS_BY_ID[id]?.name ?? id
+}
+
+// The rival dugout: every nation has a named manager with a 4-7 season tenure,
+// derived deterministically — so the same face glares back at you across a
+// cycle, then one day there's a new man with new ideas. Your h2h record vs the
+// NATION persists; the name is who you're beating.
+export function nationalManagerName(nationId: string, season: number, careerSeed: number): string {
+  const n = ALL_NATIONS_BY_ID[nationId]
+  if (!n) return 'the manager'
+  const slotSeed = deriveSeed(careerSeed, 0xd060, season) // placeholder to keep signature honest
+  void slotSeed
+  const base = deriveSeed(careerSeed, 0xd06, hashNation(nationId))
+  const tenure = 4 + (base % 4) // 4..7 seasons
+  const gen = Math.floor((season + (base % tenure)) / tenure)
+  const rng = new RNG(deriveSeed(base, gen, 0xa11))
+  return genName(n.namePool, rng)
+}
+
+function hashNation(id: string): number {
+  let h = 2166136261
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619)
+  return h >>> 0
 }

@@ -17,6 +17,7 @@ import { RankingsScreen } from './screens/RankingsScreen'
 import { LegacyScreen } from './screens/LegacyScreen'
 import { OffersScreen } from './screens/OffersScreen'
 import { FinalWhistleScreen } from './screens/FinalWhistleScreen'
+import { GhostScreen } from './screens/GhostScreen'
 
 export function App() {
   const route = useGame((s) => s.route)
@@ -69,6 +70,8 @@ export function App() {
       return <OffersScreen />
     case 'final-whistle':
       return <FinalWhistleScreen />
+    case 'ghost':
+      return <GhostScreen />
     default:
       return <TitleScreen />
   }

@@ -94,6 +94,8 @@ export function migrateCareer(raw: unknown): Career {
     lastCampaignPosition: c.lastCampaignPosition ?? null,
     offers: Array.isArray(c.offers) ? c.offers : [],
     sackedFrom: c.sackedFrom ?? null,
+    playoffPending: !!c.playoffPending,
+    h2h: c.h2h ?? {},
     news: Array.isArray(c.news) ? c.news : [],
   }
 }

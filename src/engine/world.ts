@@ -292,6 +292,34 @@ function liteTie(
   }
 }
 
+// A whole World Cup in miniature (lite sims, seeded knockout) — used by the
+// counterfactual engine to run tournaments in the world where you don't exist.
+export function ghostWorldCup(
+  world: WorldState,
+  seed: number,
+  season: number,
+): { world: WorldState; championId: string } {
+  let w = world
+  let field = Object.keys(w.ratings)
+    .filter((id) => ALL_NATIONS_BY_ID[id])
+    .sort((a, b) => ratingOf(w, b) - ratingOf(w, a))
+    .slice(0, 16)
+  let round = 0
+  while (field.length > 1) {
+    const winners: string[] = []
+    for (let i = 0; i < field.length / 2; i++) {
+      const a = field[i]
+      const b = field[field.length - 1 - i]
+      const tie = liteTie(w, a, b, deriveSeed(seed, season, round, i, 0x60d))
+      w = applyResult(w, tie.result, 'finals')
+      winners.push(tie.winnerId)
+    }
+    field = winners
+    round++
+  }
+  return { world: w, championId: field[0] }
+}
+
 function shuffle<T>(arr: readonly T[], rng: RNG): T[] {
   const a = [...arr]
   for (let i = a.length - 1; i > 0; i--) {

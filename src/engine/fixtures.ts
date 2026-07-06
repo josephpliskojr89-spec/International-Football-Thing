@@ -67,6 +67,7 @@ export function friendlyFixture(career: Career, windowId: string, season: number
 // finals knockout tie), or null. A finals tie takes precedence in the summer.
 export type CurrentMatch =
   | { type: 'QUALIFIER'; opponentId: string; home: boolean; label: string }
+  | { type: 'PLAYOFF'; opponentId: string; home: boolean; label: string }
   | { type: 'FRIENDLY'; opponentId: string; home: boolean; label: string }
   | { type: 'TOURNAMENT'; opponentId: string; home: boolean; label: string; round: string; neutral: boolean }
 
@@ -97,10 +98,28 @@ export function currentMatch(career: Career): CurrentMatch | null {
       if (mf) return { type: 'QUALIFIER', opponentId: mf.opponentId, home: mf.home, label: 'World Cup Qualifier' }
       return null
     }
+    // Finished 3rd in qualifying? The first window of World Cup year is your
+    // lifeline: one match, winner goes to the finals.
+    if (career.playoffPending && career.year === 4 && window.id === 'late-winter') {
+      const po = playoffFixture(career)
+      return { type: 'PLAYOFF', opponentId: po.opponentId, home: po.home, label: 'Intercontinental Playoff' }
+    }
     const f = friendlyFixture(career, window.id, career.season)
     return { type: 'FRIENDLY', opponentId: f.opponentId, home: f.home, label: 'International Friendly' }
   }
   return null
+}
+
+// The playoff opponent: a similarly-ranked side from ANOTHER confederation —
+// the classic intercontinental coin-flip for the last seat on the plane.
+export function playoffFixture(career: Career): Fixture {
+  const rng = new RNG(deriveSeed(career.seed, career.season, 0x9106))
+  const me = ALL_NATIONS.find((n) => n.id === career.managerNationId)!
+  const myRating = ratingOf(career.world, career.managerNationId)
+  const pool = ALL_NATIONS.filter((n) => n.isPlayable && n.confederation !== me.confederation)
+    .sort((a, b) => Math.abs(ratingOf(career.world, a.id) - myRating) - Math.abs(ratingOf(career.world, b.id) - myRating))
+    .slice(0, 6)
+  return { opponentId: rng.pick(pool).id, competitive: true, home: rng.bool(0.5) }
 }
 
 // Whether the registered squad satisfies the minimum positional requirements.

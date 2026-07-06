@@ -200,6 +200,23 @@ Audit closure + the "alternate football history" layer:
   epitaph, the numbers, nations managed, sackings survived, trophies in gold,
   the moments they'll retell — with "one more cycle" or retire-for-real.
 
+### Milestone 10 — the lifeline, the rivals & The Road Not Taken (done)
+- Intercontinental Playoff: finish 3rd in qualifying and the first window of
+  World Cup year is one match vs a similarly-ranked side from another
+  confederation — draw goes to penalties, winner boards the plane. News,
+  history, reputation stakes all wired.
+- Rival dugouts: every nation has a named manager (deterministic 4-7 season
+  tenures) and your head-to-head duel vs each nation persists forever — the
+  match screen narrates it ("They lead this duel 3-1 — a score to settle").
+- Late drama: one-goal matches settled at 88'+ get their own sentence in the
+  headline ("Won at the death — 93'.").
+- THE ROAD NOT TAKEN (`engine/counterfactual.ts` + Ghost screen): the
+  deterministic engine re-simulates the ENTIRE timeline without the manager —
+  background windows, all continental championships, ghost World Cups, era
+  drift — and lays both histories side by side: "N of M World Cups have a
+  different name on the trophy because you exist." Only possible because every
+  system in the game is seeded and reproducible.
+
 ### Not yet built (next milestones)
 1. Confederation-specific qualifying formats (league/hex/group variants) and
    inter-confederation playoffs.

@@ -159,7 +159,10 @@ export function LegacyScreen() {
           </div>
         ))}
 
-        <button className="btn btn--block" onClick={() => go('final-whistle')} style={{ marginTop: 4 }}>
+        <button className="btn btn--block" onClick={() => go('ghost')} style={{ marginTop: 4 }}>
+          👻 The Road Not Taken — the world without you
+        </button>
+        <button className="btn btn--block" onClick={() => go('final-whistle')}>
           🎬 The Final Whistle — read your career as a story
         </button>
       </div>
