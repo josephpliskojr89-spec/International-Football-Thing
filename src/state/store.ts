@@ -34,6 +34,7 @@ import {
   fixtureKey,
   tournamentForYear,
   TOURNAMENT_DEADLINE_WEEK,
+  WINDOWS,
 } from '@/data/windows'
 import type { Tournament, Trophy } from '@/engine/types'
 import { saveCareer, loadCareer, deleteSave } from './persist'
@@ -88,6 +89,7 @@ interface GameState {
   advanceToNextEvent: () => void
   setFormation: (formationId: string) => void
   swapLineupSlots: (slotA: string, slotB: string) => void
+  swapWithBench: (slotId: string, benchPlayerId: string) => void
   saveNow: () => Promise<void>
   abandonCareer: () => Promise<void>
 
@@ -261,9 +263,10 @@ export const useGame = create<GameState>((set, get) => ({
       c = next
       if (currentMatch(c)) break
       if (c.sackedFrom || c.offers.length > 0) break
-      // Stop on a registration deadline (you'll want to pick your 26)...
-      const w = windowAtWeek(c.week + 1)
-      if (w) break // next week is a match week: stop ON the deadline week
+      // Stop the week BEFORE a registration deadline (so the 26 is still
+      // yours to change), and never blow past a match week either.
+      if (WINDOWS.some((wd) => wd.deadlineWeek === c.week + 1)) break
+      if (windowAtWeek(c.week + 1)) break
       if (c.week === TOURNAMENT_DEADLINE_WEEK - 1 && tournamentForYear(c.year)) break
       // ...or when something big lands in the feed.
       if (c.news[0] && c.news[0].magnitude >= 0.9 && !career.news.some((n) => n.id === c.news[0].id)) break
@@ -294,6 +297,23 @@ export const useGame = create<GameState>((set, get) => ({
     lineup[slotA] = lineup[slotB] ?? null
     lineup[slotB] = tmp
     const next = { ...career, lineup }
+    set({ career: next })
+    scheduleSave(next)
+  },
+
+  // Swap a bench player into the XI (and the starter out to the bench). The
+  // registration lock freezes the 26, NOT the eleven — team selection within
+  // your squad is always yours, right up to kickoff.
+  swapWithBench: (slotId, benchPlayerId) => {
+    const { career } = get()
+    if (!career) return
+    if (!career.bench.includes(benchPlayerId)) return
+    const outgoing = career.lineup[slotId] ?? null
+    const lineup = { ...career.lineup, [slotId]: benchPlayerId }
+    const bench = [...career.bench.filter((id) => id !== benchPlayerId), ...(outgoing ? [outgoing] : [])]
+    const xiIds = Object.values(lineup).filter(Boolean) as string[]
+    const tactics = keepFocalIfInXI(career.tactics, xiIds)
+    const next = { ...career, lineup, bench, tactics }
     set({ career: next })
     scheduleSave(next)
   },

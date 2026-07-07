@@ -308,6 +308,20 @@ Audit closure + the "alternate football history" layer:
   WIN · PENS, headlines carry the shootout score, stories mourn "the
   loneliest walk in football".
 
+### Milestone 17 — matchday UX (done)
+- LIVE match playback (`engine/commentary.ts` + LiveMatchView): the
+  deterministic result is replayed minute by minute at ~1 game-min/second
+  (1x/2x/4x toggle) — live scoreline in the header, goals/cards/injuries
+  landing on their real minutes with green/red-bordered cards, ambient
+  commentary filling the quiet spells, HALF-TIME and EXTRA TIME markers, and
+  shootouts revealed kick by kick with a running pens score. Skip to full
+  time any time; the full-time report follows.
+- Bench ↔ XI substitution on the Squad tab (`swapWithBench`): tap a starter,
+  then a sub, to swap — explicitly allowed while the 26 is locked, because
+  registration freezes the SQUAD, not team selection.
+- "To next event" now stops the week BEFORE a registration deadline (the 26
+  still open) and never skips a match week.
+
 ### Not yet built (next milestones)
 1. Confederation-specific qualifying formats (league/hex/group variants) and
    inter-confederation playoffs.

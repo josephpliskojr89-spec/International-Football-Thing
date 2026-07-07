@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useGame } from '@/state/store'
 import { ALL_NATIONS_BY_ID } from '@/data/nations'
 import { currentMatch } from '@/engine/fixtures'
@@ -7,6 +7,7 @@ import { nationalManagerName } from '@/engine/manager'
 import { STYLE_LABELS } from '@/data/tactics'
 import type { MatchResult } from '@/engine/match'
 import { matchStory } from '@/engine/matchStory'
+import { buildTimeline, type TickerEntry } from '@/engine/commentary'
 import { styleMatchup } from '@/engine/match'
 
 export function MatchScreen() {
@@ -24,9 +25,14 @@ export function MatchScreen() {
   // to the next fixture, so the result view must not re-read the live fixture.
   const [playedHome, setPlayedHome] = useState(false)
   const [playedWeek, setPlayedWeek] = useState(1)
+  const [liveDone, setLiveDone] = useState(false)
 
   // Result FIRST: after kickoff the fixture is consumed (currentMatch goes
   // null), but the full-time screen must still show. Guard order is load-bearing.
+  // The match plays LIVE first — a minute a second — then the full-time report.
+  if (result && !liveDone) {
+    return <LiveMatchView result={result} managerIsHome={playedHome} onDone={() => setLiveDone(true)} />
+  }
   if (result) {
     return <MatchResultView result={result} managerIsHome={playedHome} week={playedWeek} onDone={() => go('schedule')} />
   }
@@ -58,6 +64,7 @@ export function MatchScreen() {
     if (r) {
       setPlayedHome(isHome) // captured before career advances
       setPlayedWeek(career.week)
+      setLiveDone(false)
       setResult(r)
     }
   }
@@ -148,6 +155,141 @@ function StyleIntel({ mine, theirs }: { mine: import('@/engine/types').PlayStyle
   return (
     <div style={{ fontSize: 12, marginTop: 4, color: m.edge === 1 ? 'var(--good)' : 'var(--warn)', fontWeight: 600 }}>
       {m.edge === 1 ? '▲' : '⚠'} {m.note}.
+    </div>
+  )
+}
+
+// Watch the match at very high speed: the deterministic result is already
+// known to the engine, but YOU live it minute by minute — goals land when they
+// landed, the clock runs at ~1 game-minute per real second (faster on demand),
+// and a shootout plays out kick by kick.
+function LiveMatchView({
+  result,
+  managerIsHome,
+  onDone,
+}: {
+  result: MatchResult
+  managerIsHome: boolean
+  onDone: () => void
+}) {
+  const timeline = useMemo(() => buildTimeline(result), [result])
+  const regEntries = useMemo(() => timeline.filter((e) => e.minute <= 120.5), [timeline])
+  const penEntries = useMemo(() => timeline.filter((e) => e.minute > 120.5), [timeline])
+  const lastRegMinute = regEntries.length ? regEntries[regEntries.length - 1].minute : 90
+
+  const [clock, setClock] = useState(0)
+  const [pensShown, setPensShown] = useState(0)
+  const [speed, setSpeed] = useState(1) // 1x = 900ms per game-minute
+  const feedRef = useRef<HTMLDivElement>(null)
+
+  const finished = clock >= lastRegMinute && pensShown >= penEntries.length
+
+  useEffect(() => {
+    if (finished) return
+    const msPerMin = 900 / speed
+    const id = setInterval(() => {
+      setClock((c) => {
+        if (c < lastRegMinute) return c + 1
+        return c
+      })
+      if (clock >= lastRegMinute && penEntries.length > 0) {
+        setPensShown((n) => Math.min(penEntries.length, n + 1))
+      }
+    }, clock >= lastRegMinute ? 1300 : msPerMin)
+    return () => clearInterval(id)
+  }, [speed, clock, lastRegMinute, penEntries.length, finished])
+
+  const shown = [
+    ...regEntries.filter((e) => e.minute <= clock),
+    ...penEntries.slice(0, pensShown),
+  ]
+  const latest = shown[shown.length - 1]
+  const liveH = latest?.homeScore ?? 0
+  const liveA = latest?.awayScore ?? 0
+  const livePens = latest?.pens
+
+  useEffect(() => {
+    feedRef.current?.scrollTo({ top: 0 })
+  }, [shown.length])
+
+  const displayMinute = Math.min(Math.floor(clock), result.extraTime ? 120 : 90)
+  const inPens = clock >= lastRegMinute && penEntries.length > 0
+
+  return (
+    <div className="screen">
+      <div className="topbar">
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="topbar__title" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {result.homeName} {liveH}–{liveA} {result.awayName}
+            {livePens ? ` (${livePens.home}–${livePens.away} pens)` : ''}
+          </div>
+          <div className="topbar__sub">{inPens ? 'PENALTY SHOOTOUT' : `${displayMinute}'`} · LIVE</div>
+        </div>
+        <button
+          className="iconbtn"
+          onClick={() => setSpeed((sp) => (sp === 1 ? 2 : sp === 2 ? 4 : 1))}
+          aria-label="Speed"
+          style={{ fontSize: 13, fontWeight: 800 }}
+        >
+          {speed}×
+        </button>
+      </div>
+
+      <div className="screen__body" ref={feedRef} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {[...shown].reverse().map((e) => (
+          <TickerRow key={`${e.order}`} e={e} managerIsHome={managerIsHome} homeName={result.homeName} />
+        ))}
+      </div>
+
+      <div style={{ padding: 'var(--pad)' }}>
+        {finished ? (
+          <button className="btn btn--primary btn--lg btn--block" onClick={onDone}>
+            Full-time report ›
+          </button>
+        ) : (
+          <button
+            className="btn btn--lg btn--block"
+            onClick={() => {
+              setClock(lastRegMinute)
+              setPensShown(penEntries.length)
+            }}
+          >
+            ⏩ Skip to full time
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TickerRow({ e, managerIsHome, homeName }: { e: TickerEntry; managerIsHome: boolean; homeName: string }) {
+  const icon =
+    e.kind === 'GOAL' ? '⚽' : e.kind === 'RED' ? '🟥' : e.kind === 'YELLOW' ? '🟨' : e.kind === 'INJURY' ? '🚑'
+    : e.kind === 'PEN' ? '🥅' : e.kind === 'HT' || e.kind === 'FT' || e.kind === 'ET' ? '⏱' : e.kind === 'END' ? '🏁' : ''
+  const big = e.kind === 'GOAL' || e.kind === 'RED' || e.kind === 'END' || e.kind === 'ET'
+  const minuteLabel = e.minute > 120.5 ? 'PENS' : `${Math.floor(e.minute)}'`
+  void managerIsHome
+  void homeName
+  return (
+    <div
+      className="card"
+      style={{
+        padding: '8px 12px',
+        display: 'flex',
+        gap: 10,
+        alignItems: 'baseline',
+        fontWeight: big ? 800 : 400,
+        fontSize: big ? 14.5 : 13.5,
+        borderLeft: e.kind === 'GOAL' ? '3px solid var(--good)' : e.kind === 'RED' ? '3px solid var(--bad)' : undefined,
+      }}
+    >
+      <span className="faint" style={{ fontSize: 11, minWidth: 34, fontVariantNumeric: 'tabular-nums' }}>
+        {minuteLabel}
+      </span>
+      <span style={{ flex: 1, lineHeight: 1.45 }}>
+        {icon && `${icon} `}
+        {e.text}
+      </span>
     </div>
   )
 }

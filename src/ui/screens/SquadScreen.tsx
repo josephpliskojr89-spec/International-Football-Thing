@@ -13,10 +13,34 @@ export function SquadScreen() {
   const career = useGame((s) => s.career)!
   const setFormation = useGame((s) => s.setFormation)
   const swapLineupSlots = useGame((s) => s.swapLineupSlots)
+  const swapWithBench = useGame((s) => s.swapWithBench)
   const setStyle = useGame((s) => s.setStyle)
   const setFocalPoint = useGame((s) => s.setFocalPoint)
   const go = useGame((s) => s.go)
   const [tab, setTab] = useState<Tab>('squad')
+  // Tap-to-substitute on the Squad tab: pick an XI slot, then a sub (or the
+  // reverse) — works even when the 26 is locked, because the XI is always yours.
+  const [pickSlot, setPickSlot] = useState<string | null>(null)
+  const [pickBench, setPickBench] = useState<string | null>(null)
+
+  const tapXI = (slotId: string) => {
+    if (pickBench) {
+      swapWithBench(slotId, pickBench)
+      setPickBench(null)
+      setPickSlot(null)
+    } else {
+      setPickSlot(pickSlot === slotId ? null : slotId)
+    }
+  }
+  const tapBench = (playerId: string) => {
+    if (pickSlot) {
+      swapWithBench(pickSlot, playerId)
+      setPickSlot(null)
+      setPickBench(null)
+    } else {
+      setPickBench(pickBench === playerId ? null : playerId)
+    }
+  }
 
   const playersById = useMemo(
     () => Object.fromEntries(career.players.map((p) => [p.id, p])),
@@ -63,7 +87,16 @@ export function SquadScreen() {
             <div className="sectionhdr">Starting XI</div>
             {formation.slots.map((slot) => {
               const p = playersById[career.lineup[slot.id] ?? '']
-              return <SquadRow key={slot.id} role={roleLabel(slot.id)} player={p} star={!!p && stars.has(p.id)} />
+              return (
+                <SquadRow
+                  key={slot.id}
+                  role={roleLabel(slot.id)}
+                  player={p}
+                  star={!!p && stars.has(p.id)}
+                  selected={pickSlot === slot.id}
+                  onClick={() => tapXI(slot.id)}
+                />
+              )
             })}
 
             <div className="sectionhdr">Substitutes</div>
@@ -71,8 +104,18 @@ export function SquadScreen() {
               .map((id) => playersById[id])
               .filter(Boolean)
               .map((p) => (
-                <SquadRow key={p.id} role={p.position} player={p} star={stars.has(p.id)} />
+                <SquadRow
+                  key={p.id}
+                  role={p.position}
+                  player={p}
+                  star={stars.has(p.id)}
+                  selected={pickBench === p.id}
+                  onClick={() => tapBench(p.id)}
+                />
               ))}
+            <div className="faint center" style={{ fontSize: 12, marginTop: 6 }}>
+              Tap a starter, then a sub (or the reverse), to swap them — even after the 26 is locked.
+            </div>
 
             <button className="btn btn--ghost btn--block" style={{ marginTop: 8 }} onClick={() => go('squad-select')}>
               Manage 26-man Squad
@@ -196,7 +239,19 @@ function TacticsTab({
 }
 
 // A squad list row: a fixed role chip on the left, the player on the right.
-function SquadRow({ role, player, star }: { role: string; player: Player | undefined; star?: boolean }) {
+function SquadRow({
+  role,
+  player,
+  star,
+  selected,
+  onClick,
+}: {
+  role: string
+  player: Player | undefined
+  star?: boolean
+  selected?: boolean
+  onClick?: () => void
+}) {
   if (!player) {
     return (
       <div className="prow" style={{ cursor: 'default', opacity: 0.6 }}>
@@ -211,7 +266,11 @@ function SquadRow({ role, player, star }: { role: string; player: Player | undef
   }
   const pot = displayPotential(player)
   return (
-    <div className="prow" style={{ cursor: 'default' }}>
+    <div
+      className={`prow ${selected ? 'prow--selected' : ''}`}
+      style={{ cursor: onClick ? 'pointer' : 'default' }}
+      onClick={onClick}
+    >
       <span className="prow__pos" style={{ background: positionColor(player.position) }}>
         {role}
       </span>
