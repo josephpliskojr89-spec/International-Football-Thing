@@ -74,4 +74,50 @@ describe('save migration', () => {
     const c = migrateCareer({ formation: '4-4-2' })
     expect(FORMATIONS_BY_ID[c.formation]).toBeTruthy()
   })
+
+  it('deep-defaults an old campaign missing newer fields, keeping its structure', () => {
+    const c = migrateCareer({
+      ...OLD_SAVE,
+      campaign: {
+        // pre-cycle-era campaign: no cycle/recentResults/qualifyCount/qualifiedIds
+        groupNationIds: ['BRA', 'ARG', 'CHI', 'PER'],
+        matchdays: [[], [], []],
+        matchdayIndex: 1,
+        standings: [{ nationId: 'BRA', p: 1, w: 1, d: 0, l: 0, gf: 2, ga: 0, pts: 3 }],
+      },
+    })
+    expect(c.campaign.groupNationIds).toContain('ARG') // structure preserved
+    expect(c.campaign.matchdayIndex).toBe(1)
+    expect(c.campaign.cycle).toBe(1)
+    expect(c.campaign.recentResults).toEqual([])
+    expect(c.campaign.qualifyCount).toBeGreaterThan(0)
+    expect(c.campaign.qualifiedIds).toEqual([])
+    expect(c.campaign.complete).toBe(false)
+  })
+
+  it('redraws a structurally broken campaign instead of keeping it', () => {
+    const c = migrateCareer({ ...OLD_SAVE, campaign: { matchdays: [[]] } }) // no group, no standings
+    expect(c.campaign.groupNationIds.length).toBeGreaterThan(0)
+    expect(Array.isArray(c.campaign.standings)).toBe(true)
+  })
+
+  it('deep-defaults an old knockout-only tournament and drops a broken one', () => {
+    const ok = migrateCareer({
+      ...OLD_SAVE,
+      tournament: {
+        kind: 'WORLD_CUP', name: 'World Cup', managerId: 'BRA', inField: true,
+        field: ['BRA', 'ARG'], rounds: [[{ aId: 'BRA', bId: 'ARG', aGoals: null, bGoals: null, winnerId: null, pens: false }]],
+        roundIndex: 0, champion: null, eliminated: false,
+        // no hostId / groups / groupMatchday — pre-group-stage save
+      },
+    })
+    expect(ok.tournament).not.toBeNull()
+    expect(ok.tournament!.hostId).toBeNull()
+    expect(ok.tournament!.groups).toBeNull() // legacy straight knockout preserved
+    expect(ok.tournament!.groupMatchday).toBe(3)
+    expect(ok.tournament!.rounds.length).toBe(1)
+
+    const broken = migrateCareer({ ...OLD_SAVE, tournament: { name: 'Ghost Cup' } }) // no field
+    expect(broken.tournament).toBeNull()
+  })
 })

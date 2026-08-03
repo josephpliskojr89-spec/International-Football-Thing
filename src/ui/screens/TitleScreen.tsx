@@ -41,7 +41,7 @@ export function TitleScreen() {
         </button>
 
         <div className="faint" style={{ marginTop: 18, fontSize: 12 }}>
-          v0.1 · offline-ready
+          v{__APP_VERSION__} · {__BUILD_HASH__}
         </div>
       </div>
     </div>

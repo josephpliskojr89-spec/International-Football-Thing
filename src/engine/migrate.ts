@@ -67,10 +67,7 @@ export function migrateCareer(raw: unknown): Career {
     bench,
     formation,
     playedFixtures: Array.isArray(c.playedFixtures) ? c.playedFixtures : [],
-    campaign:
-      c.campaign && Array.isArray(c.campaign.matchdays)
-        ? c.campaign
-        : createCampaign(c.managerNationId ?? 'ENG', c.seed ?? 1, 1),
+    campaign: migrateCampaign(c.campaign, c.managerNationId ?? 'ENG', c.seed ?? 1),
     // Older saves have no world state: start it fresh from the static ratings
     // (their world simply begins remembering from now on).
     world:
@@ -82,7 +79,7 @@ export function migrateCareer(raw: unknown): Career {
           }
         : initWorld(),
     qualifiedForWorldCup: !!c.qualifiedForWorldCup,
-    tournament: c.tournament ? { hostId: null, groups: null, groupMatchday: 3, ...c.tournament } : null,
+    tournament: migrateTournament(c.tournament, c.managerNationId ?? 'ENG'),
     trophies: Array.isArray(c.trophies) ? c.trophies : [],
     wcHostId: c.wcHostId ?? null,
     history: Array.isArray(c.history) ? c.history : [],
@@ -100,6 +97,49 @@ export function migrateCareer(raw: unknown): Career {
     h2h: c.h2h ?? {},
     eraStartSeason: c.eraStartSeason ?? 1,
     news: Array.isArray(c.news) ? c.news : [],
+  }
+}
+
+// A campaign is usable only if its core structures are intact; anything less
+// gets redrawn fresh (screens iterate standings/matchdays/recentResults raw).
+function migrateCampaign(raw: any, nationId: string, seed: number): Career['campaign'] {
+  const usable =
+    raw &&
+    Array.isArray(raw.matchdays) &&
+    Array.isArray(raw.groupNationIds) &&
+    raw.groupNationIds.length > 0 &&
+    Array.isArray(raw.standings)
+  if (!usable) return createCampaign(nationId, seed, 1)
+  return {
+    cycle: raw.cycle ?? 1,
+    groupNationIds: raw.groupNationIds,
+    matchdays: raw.matchdays,
+    matchdayIndex: raw.matchdayIndex ?? 0,
+    standings: raw.standings,
+    recentResults: Array.isArray(raw.recentResults) ? raw.recentResults : [],
+    qualifyCount: raw.qualifyCount ?? 2,
+    complete: !!raw.complete,
+    qualifiedIds: Array.isArray(raw.qualifiedIds) ? raw.qualifiedIds : [],
+  }
+}
+
+// Tournaments are transient (one summer): a structurally broken one is simply
+// dropped rather than repaired — the calendar recreates finals when due.
+function migrateTournament(raw: any, managerId: string): Career['tournament'] {
+  if (!raw || !Array.isArray(raw.field) || raw.field.length === 0) return null
+  return {
+    kind: raw.kind === 'WORLD_CUP' ? 'WORLD_CUP' : 'CONTINENTAL',
+    name: raw.name ?? 'Finals',
+    managerId: raw.managerId ?? managerId,
+    hostId: raw.hostId ?? null,
+    inField: !!raw.inField,
+    field: raw.field,
+    groups: Array.isArray(raw.groups) ? raw.groups : null,
+    groupMatchday: raw.groupMatchday ?? 3,
+    rounds: Array.isArray(raw.rounds) ? raw.rounds : [],
+    roundIndex: raw.roundIndex ?? 0,
+    champion: raw.champion ?? null,
+    eliminated: !!raw.eliminated,
   }
 }
 

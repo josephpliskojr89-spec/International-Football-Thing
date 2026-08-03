@@ -15,19 +15,85 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Gentle self-heal: if the app still hasn't painted ~9s after load, do a
-      // single plain reload — enough to recover a transient asset hiccup, but it
-      // does NOT clear caches or unregister the service worker (that removes the
-      // offline fallback and can strand a slow connection on a white screen).
+      // Boot watchdog — the white-screen killer. If the app hasn't painted a few
+      // seconds after load, recovery escalates instead of leaving a blank page:
+      //   attempt 1: plain reload (transient network/asset hiccup)
+      //   attempt 2: unregister service workers + clear CacheStorage, reload
+      //              (stale cached code — the classic installed-PWA failure)
+      //   attempt 3: show a visible crash panel with the captured errors and a
+      //              repair button — never a silent white screen.
+      // IndexedDB (the career save) is never touched by any step.
       (function () {
-        var ONCE = 'ntm-self-heal';
+        var KEY = 'ntm-boot-attempts';
+        var errors = [];
+
+        // Capture everything that goes wrong before/while the app boots, so the
+        // crash panel can say WHY instead of shrugging.
+        window.addEventListener('error', function (e) {
+          var t = e.target;
+          if (t && t !== window && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
+            errors.push('Failed to load: ' + (t.src || t.href || '(asset)'));
+          } else if (e.message) {
+            errors.push(e.message + (e.filename ? ' @ ' + e.filename.split('/').pop() + ':' + e.lineno : ''));
+          }
+        }, true);
+        window.addEventListener('unhandledrejection', function (e) {
+          var r = e && e.reason;
+          errors.push('Unhandled rejection: ' + (r && r.message ? r.message : String(r)));
+        });
+
+        function attempts() {
+          try { return parseInt(localStorage.getItem(KEY) || '0', 10) || 0; } catch (_) { return 0; }
+        }
+        function setAttempts(n) {
+          try { localStorage.setItem(KEY, String(n)); } catch (_) {}
+        }
+
+        function nukeCachesAndReload() {
+          var reloaded = false;
+          var done = function () { if (!reloaded) { reloaded = true; location.reload(); } };
+          try {
+            var jobs = [];
+            if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+              jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
+                return Promise.all(rs.map(function (r) { return r.unregister(); }));
+              }));
+            }
+            if (window.caches && caches.keys) {
+              jobs.push(caches.keys().then(function (ks) {
+                return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+              }));
+            }
+            Promise.all(jobs).then(done, done);
+            setTimeout(done, 3000); // hard stop: reload even if cleanup hangs
+          } catch (_) { done(); }
+        }
+
+        function showPanel(root) {
+          var detail = errors.length ? errors.slice(0, 6).join('\n') : 'No error was reported — the app simply never started.';
+          root.innerHTML =
+            '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;background:#0b1020;color:#e8ecf8;font-family:system-ui,-apple-system,sans-serif;text-align:center">' +
+            '<div style="font-size:40px">🟥</div>' +
+            '<div style="font-size:22px;font-weight:800">The game couldn’t start</div>' +
+            '<div style="font-size:14px;opacity:.8;max-width:340px;line-height:1.5">Your save is safe. Tap repair to clear cached app code and reload fresh — that fixes this in almost every case.</div>' +
+            '<pre style="max-width:90vw;max-height:30vh;overflow:auto;font-size:11px;text-align:left;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:12px;white-space:pre-wrap;word-break:break-word">' +
+            detail.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</pre>' +
+            '<button id="ntm-repair" style="width:260px;padding:12px 16px;border-radius:12px;border:1px solid #2f6df6;background:#2f6df6;color:#fff;font-size:15px;font-weight:700">Repair &amp; reload</button>' +
+            '<button id="ntm-reload" style="width:260px;padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#e8ecf8;font-size:15px;font-weight:700">Just reload</button>' +
+            '</div>';
+          document.getElementById('ntm-repair').onclick = function () { setAttempts(0); nukeCachesAndReload(); };
+          document.getElementById('ntm-reload').onclick = function () { setAttempts(0); location.reload(); };
+        }
+
         setTimeout(function () {
           var root = document.getElementById('root');
-          if (root && root.childElementCount > 0) return; // app mounted fine
-          if (sessionStorage.getItem(ONCE)) return; // only ever once per session
-          sessionStorage.setItem(ONCE, '1');
-          location.reload();
-        }, 9000);
+          if (root && root.childElementCount > 0) { setAttempts(0); return; } // booted fine
+          var n = attempts();
+          setAttempts(n + 1);
+          if (n === 0) { location.reload(); return; }
+          if (n === 1) { nukeCachesAndReload(); return; }
+          showPanel(root || document.body);
+        }, 6000);
       })();
     </script>
   </body>

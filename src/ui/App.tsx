@@ -28,6 +28,12 @@ export function App() {
     void hydrate()
   }, [hydrate])
 
+  // Test hook: ?ntm-crash=1 forces a render error so the crash screen (the
+  // ErrorBoundary) can be exercised end-to-end in a real browser.
+  if (new URLSearchParams(location.search).get('ntm-crash') === '1') {
+    throw new Error('Intentional test crash (ntm-crash=1)')
+  }
+
   // Routes that require an active career fall back to the title screen.
   // (title / new-game / settings are reachable without one.)
   const allowedWithoutCareer = route === 'title' || route === 'new-game' || route === 'settings'
