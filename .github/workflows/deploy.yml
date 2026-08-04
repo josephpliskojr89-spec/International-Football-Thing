@@ -56,8 +56,9 @@ jobs:
       # in a browser). Whichever deployment lands LAST is what the site serves,
       # and the built-in one reliably finished ~10s after ours. So: wait for it
       # to complete before deploying, guaranteeing the real app always wins.
-      # (The clean fix is Settings → Pages → Source: "GitHub Actions", which
-      # disables the built-in deploy entirely; this wait then breaks nothing.)
+      # UPDATE: Pages source has since been switched to "GitHub Actions", which
+      # disables the built-in deploy — this wait now no-ops in ~20s and stays
+      # only as insurance in case that setting is ever flipped back.
       - name: Wait for the built-in branch deploy to land first
         env:
           GITHUB_TOKEN: ${{ github.token }}
