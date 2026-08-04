@@ -15,6 +15,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read # to watch the built-in branch-deploy run (see the race note below)
 
 # Queue Pages deployments rather than racing them. cancel-in-progress: false is
 # the GitHub-recommended setting — cancelling a run mid-deploy leaves a Pages
@@ -48,6 +49,29 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url || steps.deployment-retry.outputs.page_url }}
     steps:
+      # THE RACE THAT BROKE THE GAME. Pages is set to "Deploy from a branch" in
+      # the repo settings, so GitHub ALSO runs its built-in "pages build and
+      # deployment" workflow on every push — publishing the raw repo root (whose
+      # index.html is the dev entry that loads /src/main.tsx and can never run
+      # in a browser). Whichever deployment lands LAST is what the site serves,
+      # and the built-in one reliably finished ~10s after ours. So: wait for it
+      # to complete before deploying, guaranteeing the real app always wins.
+      # (The clean fix is Settings → Pages → Source: "GitHub Actions", which
+      # disables the built-in deploy entirely; this wait then breaks nothing.)
+      - name: Wait for the built-in branch deploy to land first
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 30); do
+            status=$(curl -sf -H "Authorization: Bearer $GITHUB_TOKEN" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=50" \
+              | jq -r '[.workflow_runs[] | select(.name == "pages build and deployment")][0].status // empty') || status=""
+            if [ -z "$status" ] || [ "$status" = "completed" ]; then break; fi
+            echo "built-in pages deploy is ${status}; waiting…"
+            sleep 10
+          done
+          sleep 20 # let its deployment finish propagating before we overwrite it
+
       # A Pages deployment from a previous push can still be propagating
       # server-side, making this one fail with "deployment already in progress".
       # First attempt is allowed to fail; we then wait and retry once.
